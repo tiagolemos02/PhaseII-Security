@@ -1,9 +1,12 @@
 
 # Keyrock User Management Demo
 
-[![GitHub Release](https://img.shields.io/github/v/release/tiagolemos02/PhaseII-Security)](https://github.com/tiagolemos02/PhaseII-Security/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Issues](https://img.shields.io/github/issues/tiagolemos02/PhaseII-Security)](https://github.com/tiagolemos02/PhaseII-Security/issues)
+[![HTML5](https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white)](https://developer.mozilla.org/docs/Web/HTML)  
+[![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black)](https://developer.mozilla.org/docs/Web/JavaScript)  
+[![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)](https://nodejs.org/)  
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)  
+[![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://www.mysql.com/)
+
 
 > **Demo** de gestão de utilizadores FIWARE Keyrock (login, listagem e criação via API REST).
 
