@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Login / Lista / Cria Utilizadores</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 800px;
+      margin: auto;
+      padding: 1em;
+    }
+    fieldset { 
+      border: 1px solid #ddd; 
+      padding: 1em; 
+      margin-bottom: 1em; 
+    }
+    legend { font-weight: bold; }
+    input, button, textarea, label {
+      display: block;
+      width: 100%;
+      margin-bottom: .5em;
+      font-size: 1em;
+    }
+    button { width: auto; padding: .5em 1em; }
+    .error { color: red; margin-top: .5em; }
+
+    /* Estilo para secções desativadas */
+    .disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+
+    /* Tabela inicialment escondida */
+    #tblUtilizadores {
+      display: none;
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1em;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: .5em;
+      text-align: left;
+    }
+    th { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Gestão de Utilizadores Keyrock</h1>
+
+  <!-- 1) Formulário de LOGIN (sempre ativo) -->
+  <fieldset id="loginDiv">
+    <legend>1) Login</legend>
+    <input type="email" id="email" placeholder="email@example.com"/>
+    <input type="password" id="password" placeholder="palavra-passe"/>
+    <button id="btnLogin">Login</button>
+    <div id="loginMsg" class="error"></div>
+  </fieldset>
+
+  <!-- 2) Listar Utilizadores (inicialmente desativado) -->
+  <fieldset id="listaDiv" class="disabled">
+    <legend>2) Listar Utilizadores</legend>
+    <button id="btnListar" disabled>Listar Utilizadores</button>
+    <div id="mensagem" class="error"></div>
+    <table id="tblUtilizadores">
+      <thead>
+        <tr><th>ID</th><th>Username</th><th>Email</th><th>Active</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </fieldset>
+
+  <!-- 3) Criar Novo Utilizador (inicialmente desativado) -->
+  <fieldset id="createDiv" class="disabled">
+    <legend>3) Criar Novo Utilizador</legend>
+    <input type="text" id="new_username" placeholder="Username" disabled/>
+    <input type="email" id="new_email" placeholder="Email" disabled/>
+    <input type="password" id="new_password" placeholder="Password" disabled/>
+    <textarea id="new_description" placeholder="Descrição (opcional)" disabled></textarea>
+    <input type="url" id="new_website" placeholder="Website (opcional)" disabled/>
+    <label><input type="checkbox" id="new_enable" disabled/> Ativar Utilizador</label>
+    <button id="btnCreate" disabled>Criar Utilizador</button>
+    <div id="createMsg" class="error"></div>
+  </fieldset>
+
+  <script>
+    const KEYROCK_BASE = 'http://localhost:3005';
+    let sessionToken = '';
+
+    const loginDiv    = document.getElementById('loginDiv');
+    const loginMsg    = document.getElementById('loginMsg');
+    const btnLogin    = document.getElementById('btnLogin');
+
+    const listaDiv    = document.getElementById('listaDiv');
+    const btnListar   = document.getElementById('btnListar');
+    const mensagem    = document.getElementById('mensagem');
+    const tbl         = document.getElementById('tblUtilizadores');
+    const tbody       = tbl.querySelector('tbody');
+
+    const createDiv     = document.getElementById('createDiv');
+    const btnCreate     = document.getElementById('btnCreate');
+    const createMsg     = document.getElementById('createMsg');
+    const newUsername   = document.getElementById('new_username');
+    const newEmail      = document.getElementById('new_email');
+    const newPassword   = document.getElementById('new_password');
+    const newDescription= document.getElementById('new_description');
+    const newWebsite    = document.getElementById('new_website');
+    const newEnable     = document.getElementById('new_enable');
+
+    // Função para ativar as secções 2 e 3 após login
+    function enableSections() {
+      listaDiv.classList.remove('disabled');
+      btnListar.disabled = false;
+
+      createDiv.classList.remove('disabled');
+      btnCreate.disabled = false;
+      newUsername.disabled = false;
+      newEmail.disabled = false;
+      newPassword.disabled = false;
+      newDescription.disabled = false;
+      newWebsite.disabled = false;
+      newEnable.disabled  = false;
+    }
+
+    // --- 1) LOGIN ---
+    btnLogin.onclick = async () => {
+      loginMsg.textContent = '';
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      if (!email || !password) {
+        loginMsg.textContent = 'Introduza email e password.';
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${KEYROCK_BASE}/v1/auth/tokens`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ name: email, password: password })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          loginMsg.textContent = 'Erro ao fazer login: ' + (err.error?.message || resp.statusText);
+          return;
+        }
+        sessionToken = resp.headers.get('X-Subject-Token') || '';
+        if (!sessionToken) {
+          loginMsg.textContent = 'Erro: não recebi X-Auth-Token.';
+          return;
+        }
+
+        // login OK → esconde formulário e habilita secções 2 e 3
+        loginDiv.style.display = 'none';
+        enableSections();
+      }
+      catch(e) {
+        loginMsg.textContent = 'Erro de rede.';
+        console.error(e);
+      }
+    };
+
+    // --- 2) LISTAR UTILIZADORES ---
+    btnListar.onclick = async () => {
+      mensagem.textContent  = '';
+      tbody.innerHTML       = '';
+      tbl.style.display     = 'none';
+
+      if (!sessionToken) {
+        mensagem.textContent = 'Faça login primeiro.';
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${KEYROCK_BASE}/v1/users`, {
+          method: 'GET',
+          headers: {
+            'Accept':'application/json',
+            'X-Auth-Token': sessionToken
+          }
+        });
+        if (!resp.ok) {
+          mensagem.textContent = `Erro ao listar: HTTP ${resp.status}`;
+          return;
+        }
+        const data = await resp.json();
+        console.log('Resposta /v1/users →', data);
+
+        if (!Array.isArray(data.users)) {
+          mensagem.textContent = 'Formato inesperado.';
+          return;
+        }
+        if (data.users.length === 0) {
+          mensagem.textContent = 'Nenhum utilizador encontrado.';
+          return;
+        }
+
+        data.users.forEach(u => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${u.id}</td>
+            <td>${u.username}</td>
+            <td>${u.email}</td>
+            <td>${u.active}</td>`;
+          tbody.appendChild(tr);
+        });
+        tbl.style.display = 'table';
+      }
+      catch(e) {
+        mensagem.textContent = 'Erro de rede ou JSON inválido.';
+        console.error(e);
+      }
+    };
+
+    // --- 3) CRIAR UTILIZADOR ---
+    btnCreate.onclick = async () => {
+      createMsg.textContent = '';
+      if (!sessionToken) {
+        createMsg.textContent = 'Faça login primeiro.';
+        return;
+      }
+
+      const username    = newUsername.value.trim();
+      const email       = newEmail.value.trim();
+      const password    = newPassword.value.trim();
+      const description = newDescription.value.trim();
+      const website     = newWebsite.value.trim();
+      const enabled     = newEnable.checked;
+
+      if (!username || !email || !password) {
+        createMsg.textContent = 'Username, email e password são obrigatórios.';
+        return;
+      }
+
+      try {
+        const resp = await fetch(`${KEYROCK_BASE}/v1/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type':'application/json',
+            'X-Auth-Token': sessionToken
+          },
+          body: JSON.stringify({
+            user: { username, email, password, description, website, enabled }
+          })
+        });
+        if (resp.status === 201) {
+          createMsg.style.color = 'green';
+          createMsg.textContent = 'Utilizador criado com sucesso!';
+          btnListar.click(); // refresca lista
+          return;
+        }
+        const err = await resp.json().catch(() => ({}));
+        createMsg.textContent = 'Erro ao criar: ' + (err.error?.message || resp.statusText);
+      }
+      catch(e) {
+        createMsg.textContent = 'Erro de rede.';
+        console.error(e);
+      }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+services:
+  mysql-db:
+    restart: always
+    image: mysql:${MYSQL_DB_VERSION}
+    container_name: db-mysql
+    hostname: mysql-db
+    expose:
+      - "${MYSQL_DB_PORT}"
+    ports:
+      - "${MYSQL_DB_PORT}:${MYSQL_DB_PORT}"
+    networks:
+      default:
+        ipv4_address: 172.18.1.6
+    environment:
+      - "MYSQL_ROOT_PASSWORD_FILE=/run/secrets/my_secret_data"
+      - "MYSQL_ROOT_HOST:=172.18.1.5"     
+    volumes:
+      - mysql-db:/var/lib/mysql
+    secrets:
+      - my_secret_data
+
+  keyrock:
+    image: quay.io/fiware/idm:${KEYROCK_VERSION}
+    container_name: fiware-keyrock
+    hostname: keyrock
+    networks:
+      default:
+        ipv4_address: 172.18.1.5
+    depends_on:
+      - mysql-db
+    ports:
+      - "${KEYROCK_PORT}:${KEYROCK_PORT}" # localhost:3005
+      - "${KEYROCK_HTTPS_PORT}:${KEYROCK_HTTPS_PORT}" # localhost:3443
+    environment:
+      - "DEBUG=idm:*"
+      # ── DB ──────────────────────────────
+      - "IDM_DB_HOST=mysql-db"
+      - "IDM_DB_USER=root"
+      - "IDM_DB_PASS_FILE=/run/secrets/my_secret_data"
+      - "IDM_DB_NAME=keyrock"
+      # ── Core settings ───────────────────
+      - "IDM_PORT=${KEYROCK_PORT}"
+      - "IDM_HOST=http://localhost:${KEYROCK_PORT}"
+      - "IDM_HTTPS_ENABLED=${IDM_HTTPS_ENABLED}"
+      - "IDM_HTTPS_PORT=${KEYROCK_HTTPS_PORT}"
+      # ── Admin user ──────────────────────
+      - "IDM_ADMIN_USER=admin"
+      - "IDM_ADMIN_EMAIL=admin@test.com"
+      - "IDM_ADMIN_PASS=fiware"
+      - IDM_CSP_FORM_ACTION=*
+      # ── CORS ────────────────────────────
+      - "CORS_ENABLED=true"
+      - "CORS_ALLOWED_ORIGINS=http://localhost:8000"
+      - "CORS_ALLOWED_HEADERS=Authorization,Content-Type,X-Auth-Token"
+      - "CORS_ALLOWED_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    secrets:
+      - my_secret_data
+    healthcheck:
+      interval: 5s
+
+########################
+#  VOLUMES & NETWORKS   #
+########################
+volumes:
+  mysql-db: ~
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.18.1.0/24
+
+#################
+#     SECRETS   #
+#################
+secrets:
+  my_secret_data:
+    file: ./secrets.txt
