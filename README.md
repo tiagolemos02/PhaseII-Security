@@ -1,7 +1,7 @@
 
 # Keyrock User Management Demo
 
-[![GitHub Release](https://img.shields.io/github/v/release/tiagolemos02/PhaseII-Security)](https://github.com/yourusername/keyrock-user-management-demo/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/tiagolemos02/PhaseII-Security)](https://github.com/tiagolemos02/PhaseII-Security/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Issues](https://img.shields.io/github/issues/tiagolemos02/PhaseII-Security)](https://github.com/tiagolemos02/PhaseII-Security/issues)
 
