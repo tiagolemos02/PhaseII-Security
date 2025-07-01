@@ -1,263 +1,275 @@
 <!DOCTYPE html>
-<html lang="pt-PT">
+<html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Login / Lista / Cria Utilizadores</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Twin Security Portal</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
-      font-family: sans-serif;
-      max-width: 800px;
-      margin: auto;
-      padding: 1em;
-    }
-    fieldset { 
-      border: 1px solid #ddd; 
-      padding: 1em; 
-      margin-bottom: 1em; 
-    }
-    legend { font-weight: bold; }
-    input, button, textarea, label {
-      display: block;
-      width: 100%;
-      margin-bottom: .5em;
-      font-size: 1em;
-    }
-    button { width: auto; padding: .5em 1em; }
-    .error { color: red; margin-top: .5em; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Estilo para secções desativadas */
-    .disabled {
-      opacity: 0.5;
-      pointer-events: none;
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #4338ca;
     }
 
-    /* Tabela inicialment escondida */
-    #tblUtilizadores {
-      display: none;
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 1em;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: .5em;
-      text-align: left;
-    }
-    th { background: #f0f0f0; }
+    body { font-family:'Inter',sans-serif; background:#f9fafb; }
+    .card { transition:all .3s ease; box-shadow:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06); }
+    .card:hover { transform:translateY(-2px); box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -2px rgba(0,0,0,.05); }
+    .disabled-section { opacity:.6; pointer-events:none; }
+    .status-badge { padding:.25rem .5rem; border-radius:9999px; font-size:.75rem; font-weight:600; }
+    .status-active { background:#d1fae5; color:#065f46; }
+    .status-inactive { background:#fee2e2; color:#991b1b; }
+    .loading-spinner { animation: spin 1s linear infinite; }
+    @keyframes spin { from {transform:rotate(0)} to {transform:rotate(360deg)} }
+    .password-toggle { position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer; color:#6b7280; }
+    .password-toggle:hover { color:var(--primary); }
+    .tab-active { border-bottom:2px solid var(--primary); color:var(--primary); }
   </style>
 </head>
-<body>
-  <h1>Gestão de Utilizadores Keyrock</h1>
+<body class="min-h-screen bg-gray-50">
+  <div class="container mx-auto px-4 py-8 max-w-6xl">
+    <!-- HEADER -->
+    <header class="mb-8">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="bg-indigo-100 p-3 rounded-lg"><i class="fas fa-shield-alt text-indigo-600 text-2xl"></i></div>
+          <div>
+            <h1 class="text-2xl font-bold text-gray-800">Digital Twin Security Portal</h1>
+            <p class="text-gray-600">Secure access management for your digital twin ecosystem</p>
+          </div>
+        </div>
+        <!-- USER MENU -->
+        <div id="userMenuWrapper" class="hidden relative">
+          <button id="userInfo" class="flex items-center space-x-2 bg-indigo-50 px-4 py-2 rounded-full focus:outline-none">
+            <i class="fas fa-user-circle text-indigo-600"></i>
+            <span id="loggedInEmail" class="font-medium text-indigo-700 text-sm"></span>
+          </button>
+          <div id="userDropdown" class="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg hidden z-50">
+            <button id="btnLogout" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Log out</button>
+          </div>
+        </div>
+      </div>
+    </header>
 
-  <!-- 1) Formulário de LOGIN (sempre ativo) -->
-  <fieldset id="loginDiv">
-    <legend>1) Login</legend>
-    <input type="email" id="email" placeholder="email@example.com"/>
-    <input type="password" id="password" placeholder="palavra-passe"/>
-    <button id="btnLogin">Login</button>
-    <div id="loginMsg" class="error"></div>
-  </fieldset>
+    <!-- MAIN -->
+    <main>
+      <!-- LOGIN SECTION -->
+      <section id="loginSection" class="card bg-white rounded-lg p-6 mb-6">
+        <div class="grid md:grid-cols-2 gap-6">
+          <div>
+            <form id="loginForm" onsubmit="return false;">
+              <div class="mb-4">
+                <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <div class="relative">
+                  <input type="email" id="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="admin@digitaltwin.com">
+                  <i class="fas fa-envelope absolute right-3 top-3 text-gray-400"></i>
+                </div>
+              </div>
+              <div class="mb-4">
+                <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <div class="relative">
+                  <input type="password" id="password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="••••••••">
+                  <i id="togglePassword" class="fas fa-eye-slash password-toggle"></i>
+                </div>
+              </div>
+              <button type="button" id="btnLogin" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200 flex items-center justify-center">
+                <span id="loginBtnText">Sign In</span>
+                <i id="loginSpinner" class="fas fa-spinner loading-spinner ml-2 hidden"></i>
+              </button>
+              <div id="loginMsg" class="mt-3 text-sm text-red-600"></div>
+            </form>
+          </div>
+          <div class="hidden md:block bg-gray-50 p-6 rounded-lg border border-gray-200">
+            <h3 class="text-lg font-medium text-gray-800 mb-3">Security Information</h3>
+            <p class="text-sm text-gray-600 mb-2"><i class="fas fa-lock text-green-600 mr-1"></i> End‑to‑End TLS 1.3</p>
+            <p class="text-sm text-gray-600 mb-2"><i class="fas fa-user-shield text-blue-600 mr-1"></i> Role‑Based Access Control</p>
+            <p class="text-sm text-gray-600"><i class="fas fa-fingerprint text-purple-600 mr-1"></i> Optional MFA</p>
+          </div>
+        </div>
+      </section>
 
-  <!-- 2) Listar Utilizadores (inicialmente desativado) -->
-  <fieldset id="listaDiv" class="disabled">
-    <legend>2) Listar Utilizadores</legend>
-    <button id="btnListar" disabled>Listar Utilizadores</button>
-    <div id="mensagem" class="error"></div>
-    <table id="tblUtilizadores">
-      <thead>
-        <tr><th>ID</th><th>Username</th><th>Email</th><th>Active</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </fieldset>
+      <!-- TABS NAVIGATION -->
+      <div id="tabsNav" class="hidden border-b border-gray-200 mb-6">
+        <nav class="-mb-px flex space-x-8">
+          <button id="usersTab"   class="tab-active whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm"><i class="fas fa-users mr-2"></i>User Management</button>
+          <button id="rolesTab"   class="whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300"><i class="fas fa-user-tag mr-2"></i>Roles & Permissions</button>
+          <button id="auditTab"   class="whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300"><i class="fas fa-clipboard-list mr-2"></i>Audit Logs</button>
+          <button id="settingsTab"class="whitespace-nowrap py-4 px-1 border-b-2 border-transparent font-medium text-sm text-gray-500 hover:text-gray-700 hover:border-gray-300"><i class="fas fa-cog mr-2"></i>Security Settings</button>
+        </nav>
+      </div>
 
-  <!-- 3) Criar Novo Utilizador (inicialmente desativado) -->
-  <fieldset id="createDiv" class="disabled">
-    <legend>3) Criar Novo Utilizador</legend>
-    <input type="text" id="new_username" placeholder="Username" disabled/>
-    <input type="email" id="new_email" placeholder="Email" disabled/>
-    <input type="password" id="new_password" placeholder="Password" disabled/>
-    <textarea id="new_description" placeholder="Descrição (opcional)" disabled></textarea>
-    <input type="url" id="new_website" placeholder="Website (opcional)" disabled/>
-    <label><input type="checkbox" id="new_enable" disabled/> Ativar Utilizador</label>
-    <button id="btnCreate" disabled>Criar Utilizador</button>
-    <div id="createMsg" class="error"></div>
-  </fieldset>
+      <!-- USERS SECTION -->
+      <section id="usersSection" class="disabled-section">
+        <div class="card bg-white rounded-lg p-6 mb-6">
+          <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center"><div class="bg-indigo-100 p-2 rounded-full mr-3"><i class="fas fa-users text-indigo-600"></i></div><h2 class="text-xl font-semibold text-gray-800">User Management</h2></div>
+            <button id="refreshUsers" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center"><i class="fas fa-sync-alt mr-2"></i>Refresh</button>
+          </div>
+          <div class="overflow-x-auto">
+            <table id="usersTable" class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th></tr></thead>
+              <tbody id="usersTableBody" class="bg-white divide-y divide-gray-200"><tr><td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">Please sign in to view users</td></tr></tbody>
+            </table>
+          </div>
+          <div id="usersMessage" class="mt-3 text-sm text-red-600"></div>
+        </div>
+
+        <!-- CREATE USER CARD -->
+        <div class="card bg-white rounded-lg p-6">
+          <div class="flex items-center mb-6"><div class="bg-green-100 p-2 rounded-full mr-3"><i class="fas fa-user-plus text-green-600"></i></div><h2 class="text-xl font-semibold text-gray-800">Create New User</h2></div>
+          <form id="createUserForm" onsubmit="return false;">
+            <div class="grid md:grid-cols-2 gap-6">
+              <div>
+                <div class="mb-4"><label for="new_username" class="block text-sm font-medium text-gray-700 mb-1">Username *</label><input type="text" id="new_username" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Enter username" disabled></div>
+                <div class="mb-4"><label for="new_email" class="block text-sm font-medium text-gray-700 mb-1">Email *</label><input type="email" id="new_email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="user@digitaltwin.com" disabled></div>
+                <div class="mb-4"><label for="new_password" class="block text-sm font-medium text-gray-700 mb-1">Password *</label><div class="relative"><input type="password" id="new_password" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="••••••••" disabled><i id="toggleNewPassword" class="fas fa-eye-slash password-toggle"></i></div><p class="mt-1 text-xs text-gray-500">Minimum 8 characters with uppercase, lowercase, and number</p></div>
+              </div>
+              <div>
+                <div class="mb-4"><label for="new_description" class="block text-sm font-medium text-gray-700 mb-1">Description</label><textarea id="new_description" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="Optional user description" disabled></textarea></div>
+                <div class="mb-4"><label for="new_website" class="block text-sm font-medium text-gray-700 mb-1">Website</label><input type="url" id="new_website" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="https://example.com" disabled></div>
+                <div class="flex items-center mb-6"><input type="checkbox" id="new_enable" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" disabled><label for="new_enable" class="ml-2 block text-sm text-gray-700">Enable user immediately</label></div>
+              </div>
+            </div>
+            <div class="flex justify-end"><button type="button" id="btnCreate" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded-lg transition duration-200 flex items-center" disabled><span id="createBtnText">Create User</span><i id="createSpinner" class="fas fa-spinner loading-spinner ml-2 hidden"></i></button></div>
+            <div id="createMsg" class="mt-3 text-sm text-red-600"></div>
+          </form>
+        </div>
+      </section>
+
+      <!-- PLACEHOLDER SECTIONS -->
+      <section id="rolesSection" class="hidden"><div class="card bg-white rounded-lg p-6"><h2 class="text-xl font-semibold text-gray-800 mb-2">Roles & Permissions</h2><p class="text-gray-600">Coming soon.</p></div></section>
+      <section id="auditSection" class="hidden"><div class="card bg-white rounded-lg p-6"><h2 class="text-xl font-semibold text-gray-800 mb-2">Audit Logs</h2><p class="text-gray-600">Coming soon.</p></div></section>
+      <section id="settingsSection" class="hidden"><div class="card bg-white rounded-lg p-6"><h2 class="text-xl font-semibold text-gray-800 mb-2">Security Settings</h2><p class="text-gray-600">Coming soon.</p></div></section>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="mt-12 text-center text-sm text-gray-500"><p>© 2025 Digital Twin Security Portal. All rights reserved.</p></footer>
+  </div>
 
   <script>
-    const KEYROCK_BASE = 'http://localhost:3005';
-    let sessionToken = '';
+    /* ======================== STATE & DOM ======================== */
+    const KEYROCK_BASE      = 'http://localhost:3005';
+    let sessionToken        = '';
+    let currentUserEmail    = '';
 
-    const loginDiv    = document.getElementById('loginDiv');
-    const loginMsg    = document.getElementById('loginMsg');
-    const btnLogin    = document.getElementById('btnLogin');
+    const loginSection      = document.getElementById('loginSection');
+    const emailInput        = document.getElementById('email');
+    const passwordInput     = document.getElementById('password');
+    const btnLogin          = document.getElementById('btnLogin');
+    const loginBtnText      = document.getElementById('loginBtnText');
+    const loginSpinner      = document.getElementById('loginSpinner');
+    const loginMsg          = document.getElementById('loginMsg');
 
-    const listaDiv    = document.getElementById('listaDiv');
-    const btnListar   = document.getElementById('btnListar');
-    const mensagem    = document.getElementById('mensagem');
-    const tbl         = document.getElementById('tblUtilizadores');
-    const tbody       = tbl.querySelector('tbody');
+    const userMenuWrapper   = document.getElementById('userMenuWrapper');
+    const userInfoBtn       = document.getElementById('userInfo');
+    const userDropdown      = document.getElementById('userDropdown');
+    const btnLogout         = document.getElementById('btnLogout');
+    const loggedInEmail     = document.getElementById('loggedInEmail');
 
-    const createDiv     = document.getElementById('createDiv');
-    const btnCreate     = document.getElementById('btnCreate');
-    const createMsg     = document.getElementById('createMsg');
-    const newUsername   = document.getElementById('new_username');
-    const newEmail      = document.getElementById('new_email');
-    const newPassword   = document.getElementById('new_password');
-    const newDescription= document.getElementById('new_description');
-    const newWebsite    = document.getElementById('new_website');
-    const newEnable     = document.getElementById('new_enable');
+    const tabsNav           = document.getElementById('tabsNav');
+    const usersTab          = document.getElementById('usersTab');
+    const rolesTab          = document.getElementById('rolesTab');
+    const auditTab          = document.getElementById('auditTab');
+    const settingsTab       = document.getElementById('settingsTab');
 
-    // Função para ativar as secções 2 e 3 após login
-    function enableSections() {
-      listaDiv.classList.remove('disabled');
-      btnListar.disabled = false;
+    const usersSection      = document.getElementById('usersSection');
+    const rolesSection      = document.getElementById('rolesSection');
+    const auditSection      = document.getElementById('auditSection');
+    const settingsSection   = document.getElementById('settingsSection');
 
-      createDiv.classList.remove('disabled');
-      btnCreate.disabled = false;
-      newUsername.disabled = false;
-      newEmail.disabled = false;
-      newPassword.disabled = false;
-      newDescription.disabled = false;
-      newWebsite.disabled = false;
-      newEnable.disabled  = false;
+    const usersTableBody    = document.getElementById('usersTableBody');
+    const usersMessage      = document.getElementById('usersMessage');
+    const refreshUsers      = document.getElementById('refreshUsers');
+
+    const newUsername       = document.getElementById('new_username');
+    const newEmail          = document.getElementById('new_email');
+    const newPassword       = document.getElementById('new_password');
+    const newDescription    = document.getElementById('new_description');
+    const newWebsite        = document.getElementById('new_website');
+    const newEnable         = document.getElementById('new_enable');
+    const btnCreate         = document.getElementById('btnCreate');
+    const createMsg         = document.getElementById('createMsg');
+
+    /* ======================== HELPERS ======================== */
+    function showDropdown(show=true){ userDropdown.classList.toggle('hidden', !show); }
+    function resetApp(){ location.reload(); }
+
+    function switchTab(name){
+      [usersTab,rolesTab,auditTab,settingsTab].forEach(btn=>btn.classList.remove('tab-active','text-indigo-600'));
+      [usersTab,rolesTab,auditTab,settingsTab].forEach(btn=>btn.classList.add('text-gray-500','border-transparent'));
+      usersSection.classList.add('hidden'); rolesSection.classList.add('hidden'); auditSection.classList.add('hidden'); settingsSection.classList.add('hidden');
+      if(name==='users'){usersTab.classList.add('tab-active','text-indigo-600'); usersSection.classList.remove('hidden');}
+      if(name==='roles'){rolesTab.classList.add('tab-active','text-indigo-600'); rolesSection.classList.remove('hidden');}
+      if(name==='audit'){auditTab.classList.add('tab-active','text-indigo-600'); auditSection.classList.remove('hidden');}
+      if(name==='settings'){settingsTab.classList.add('tab-active','text-indigo-600'); settingsSection.classList.remove('hidden');}
     }
 
-    // --- 1) LOGIN ---
+    /* ======================== EVENT LISTENERS ======================== */
+    usersTab.onclick   = ()=>switchTab('users');
+    rolesTab.onclick   = ()=>switchTab('roles');
+    auditTab.onclick   = ()=>switchTab('audit');
+    settingsTab.onclick= ()=>switchTab('settings');
+
+    document.getElementById('togglePassword').onclick = function(){ passwordInput.type = passwordInput.type==='password'?'text':'password'; this.classList.toggle('fa-eye'); this.classList.toggle('fa-eye-slash'); };
+    document.getElementById('toggleNewPassword').onclick = function(){ newPassword.type = newPassword.type==='password'?'text':'password'; this.classList.toggle('fa-eye'); this.classList.toggle('fa-eye-slash'); };
+
+    userInfoBtn.addEventListener('click',e=>{ e.stopPropagation(); showDropdown(userDropdown.classList.contains('hidden')); });
+    document.addEventListener('click',()=>showDropdown(false));
+    btnLogout.addEventListener('click',resetApp);
+
+    /* ======================== LOGIN ======================== */
     btnLogin.onclick = async () => {
-      loginMsg.textContent = '';
-      const email    = document.getElementById('email').value.trim();
-      const password = document.getElementById('password').value.trim();
-
-      if (!email || !password) {
-        loginMsg.textContent = 'Introduza email e password.';
-        return;
-      }
-
-      try {
-        const resp = await fetch(`${KEYROCK_BASE}/v1/auth/tokens`, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ name: email, password: password })
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          loginMsg.textContent = 'Erro ao fazer login: ' + (err.error?.message || resp.statusText);
-          return;
-        }
-        sessionToken = resp.headers.get('X-Subject-Token') || '';
-        if (!sessionToken) {
-          loginMsg.textContent = 'Erro: não recebi X-Auth-Token.';
-          return;
-        }
-
-        // login OK → esconde formulário e habilita secções 2 e 3
-        loginDiv.style.display = 'none';
-        enableSections();
-      }
-      catch(e) {
-        loginMsg.textContent = 'Erro de rede.';
-        console.error(e);
-      }
+      loginMsg.textContent='';
+      const email=emailInput.value.trim(); const pwd=passwordInput.value.trim();
+      if(!email||!pwd){ loginMsg.textContent='Please enter both email and password.'; return; }
+      loginBtnText.textContent='Authenticating…'; loginSpinner.classList.remove('hidden'); btnLogin.disabled=true;
+      try{
+        const resp=await fetch(`${KEYROCK_BASE}/v1/auth/tokens`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:email,password:pwd})});
+        if(!resp.ok){ const err=await resp.json().catch(()=>({})); loginMsg.textContent=err.error?.message||'Authentication failed.'; return; }
+        sessionToken = resp.headers.get('X-Subject-Token')||''; if(!sessionToken){ loginMsg.textContent='No token received.'; return; }
+        currentUserEmail=email;
+        // show UI
+        userMenuWrapper.classList.remove('hidden'); loggedInEmail.textContent=email; loginSection.classList.add('hidden'); tabsNav.classList.remove('hidden'); usersSection.classList.remove('disabled-section');
+        [newUsername,newEmail,newPassword,newDescription,newWebsite,newEnable,btnCreate].forEach(el=>el.disabled=false);
+        listUsers();
+      }catch(e){ console.error(e); loginMsg.textContent='Network error.'; }
+      finally{ loginBtnText.textContent='Sign In'; loginSpinner.classList.add('hidden'); btnLogin.disabled=false; }
     };
 
-    // --- 2) LISTAR UTILIZADORES ---
-    btnListar.onclick = async () => {
-      mensagem.textContent  = '';
-      tbody.innerHTML       = '';
-      tbl.style.display     = 'none';
-
-      if (!sessionToken) {
-        mensagem.textContent = 'Faça login primeiro.';
-        return;
-      }
-
-      try {
-        const resp = await fetch(`${KEYROCK_BASE}/v1/users`, {
-          method: 'GET',
-          headers: {
-            'Accept':'application/json',
-            'X-Auth-Token': sessionToken
-          }
+    /* ======================== LIST USERS ======================== */
+    async function listUsers(){
+      usersMessage.textContent='';
+      usersTableBody.innerHTML='<tr><td colspan="5" class="px-6 py-4 text-center"><i class="fas fa-spinner loading-spinner text-indigo-600"></i></td></tr>';
+      if(!sessionToken){ usersMessage.textContent='Please login first.'; return; }
+      try{
+        const resp=await fetch(`${KEYROCK_BASE}/v1/users`,{method:'GET',headers:{'Accept':'application/json','X-Auth-Token':sessionToken}});
+        if(!resp.ok){ usersMessage.textContent=`Error listing users (HTTP ${resp.status})`; return; }
+        const data=await resp.json();
+        if(!Array.isArray(data.users)||!data.users.length){ usersTableBody.innerHTML='<tr><td colspan="5" class="px-6 py-4 text-center text-sm text-gray-500">No users found</td></tr>'; return; }
+        usersTableBody.innerHTML='';
+        data.users.forEach(u=>{
+          const tr=document.createElement('tr');
+          tr.innerHTML=`<td class='px-6 py-4 text-sm whitespace-nowrap'>${u.id}</td><td class='px-6 py-4 text-sm'>${u.username}</td><td class='px-6 py-4 text-sm'>${u.email}</td><td class='px-6 py-4'>${u.enabled?"<span class='status-badge status-active'>Active</span>":"<span class='status-badge status-inactive'>Inactive</span>"}</td><td class='px-6 py-4 text-sm'>-</td>`;
+          usersTableBody.appendChild(tr);
         });
-        if (!resp.ok) {
-          mensagem.textContent = `Erro ao listar: HTTP ${resp.status}`;
-          return;
-        }
-        const data = await resp.json();
-        console.log('Resposta /v1/users →', data);
+      }catch(e){ console.error(e); usersMessage.textContent='Network error.'; }
+    }
+    refreshUsers.onclick=listUsers;
 
-        if (!Array.isArray(data.users)) {
-          mensagem.textContent = 'Formato inesperado.';
-          return;
-        }
-        if (data.users.length === 0) {
-          mensagem.textContent = 'Nenhum utilizador encontrado.';
-          return;
-        }
-
-        data.users.forEach(u => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td>${u.id}</td>
-            <td>${u.username}</td>
-            <td>${u.email}</td>
-            <td>${u.active}</td>`;
-          tbody.appendChild(tr);
-        });
-        tbl.style.display = 'table';
-      }
-      catch(e) {
-        mensagem.textContent = 'Erro de rede ou JSON inválido.';
-        console.error(e);
-      }
-    };
-
-    // --- 3) CRIAR UTILIZADOR ---
+    /* ======================== CREATE USER ======================== */
     btnCreate.onclick = async () => {
-      createMsg.textContent = '';
-      if (!sessionToken) {
-        createMsg.textContent = 'Faça login primeiro.';
-        return;
-      }
-
-      const username    = newUsername.value.trim();
-      const email       = newEmail.value.trim();
-      const password    = newPassword.value.trim();
-      const description = newDescription.value.trim();
-      const website     = newWebsite.value.trim();
-      const enabled     = newEnable.checked;
-
-      if (!username || !email || !password) {
-        createMsg.textContent = 'Username, email e password são obrigatórios.';
-        return;
-      }
-
-      try {
-        const resp = await fetch(`${KEYROCK_BASE}/v1/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type':'application/json',
-            'X-Auth-Token': sessionToken
-          },
-          body: JSON.stringify({
-            user: { username, email, password, description, website, enabled }
-          })
-        });
-        if (resp.status === 201) {
-          createMsg.style.color = 'green';
-          createMsg.textContent = 'Utilizador criado com sucesso!';
-          btnListar.click(); // refresca lista
-          return;
-        }
-        const err = await resp.json().catch(() => ({}));
-        createMsg.textContent = 'Erro ao criar: ' + (err.error?.message || resp.statusText);
-      }
-      catch(e) {
-        createMsg.textContent = 'Erro de rede.';
-        console.error(e);
-      }
+      createMsg.textContent='';
+      if(!sessionToken){ createMsg.textContent='Please login first.'; return; }
+      const username=newUsername.value.trim(); const email=newEmail.value.trim(); const pwd=newPassword.value.trim();
+      const description=newDescription.value.trim(); const website=newWebsite.value.trim(); const enabled=newEnable.checked;
+      if(!username||!email||!pwd){ createMsg.textContent='Username, email and password are required.'; return; }
+      try{
+        const resp=await fetch(`${KEYROCK_BASE}/v1/users`,{method:'POST',headers:{'Content-Type':'application/json','X-Auth-Token':sessionToken},body:JSON.stringify({user:{username,email,password:pwd,description,website,enabled}})});
+        if(resp.status===201){ createMsg.classList.remove('text-red-600'); createMsg.classList.add('text-green-600'); createMsg.textContent='User created successfully!'; createUserForm.reset(); listUsers(); return; }
+        const err=await resp.json().catch(()=>({})); createMsg.textContent='Error creating user: '+(err.error?.message||resp.statusText);
+      }catch(e){ console.error(e); createMsg.textContent='Network error.'; }
     };
   </script>
 </body>
