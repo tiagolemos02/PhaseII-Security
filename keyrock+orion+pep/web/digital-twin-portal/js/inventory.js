@@ -16,7 +16,26 @@ import {
   machineDescription,
   machineServiceGroup,
   machineStatus,
-  machineAttributes,
+  attributeModeToggle,
+  attributeModeStatus,
+  attributeManualContainer,
+  attributeAutomaticContainer,
+  machineAttributesManual,
+  attributeObjectId,
+  attributeName,
+  attributeType,
+  attributeAddBtn,
+  attributeAutoList,
+  staticAttributesModeToggle,
+  staticAttributesModeStatus,
+  staticAttributesManualContainer,
+  machineStaticAttributesManual,
+  staticAttributesAutomaticContainer,
+  staticAttributeName,
+  staticAttributeType,
+  staticAttributeValue,
+  staticAttributeAddBtn,
+  staticAttributeAutoList,
   machineMsg,
   machinesTableBody,
   machineCount
@@ -46,6 +65,12 @@ let loadingMachines = false;
 const ACTIVITY_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 const MACHINE_STATUS_REFRESH_INTERVAL_MS = 60 * 1000;
 let machineStatusIntervalId = null;
+let telemetryAttributeEntries = [];
+let staticAttributeEntries = [];
+let telemetryInputMode = 'manual';
+let staticAttributesInputModeState = 'manual';
+const MANUAL_GRADIENT = ['#1E3A8A', '#4C51BF'];
+const AUTOMATIC_GRADIENT = ['#10B981', '#34D399'];
 
 const FIWARE_CONTEXT_BROKER_URLS = Array.from(
   new Set(
@@ -88,8 +113,31 @@ export function initInventory() {
   machineForm?.addEventListener('submit', handleMachineSubmit);
   serviceGroupName?.addEventListener('blur', populateApikeyFromName);
   serviceGroupsTableBody?.addEventListener('click', handleServiceGroupTableClick);
+  setupToggleControl({
+    toggleElement: attributeModeToggle,
+    getMode: () => telemetryInputMode,
+    setMode: (mode) => {
+      updateAttributeInputMode(mode);
+      hideMessage(machineMsg);
+    },
+    preview: previewTelemetryProgress
+  });
+  setupToggleControl({
+    toggleElement: staticAttributesModeToggle,
+    getMode: () => staticAttributesInputModeState,
+    setMode: (mode) => {
+      updateStaticAttributeInputMode(mode);
+      hideMessage(machineMsg);
+    },
+    preview: previewStaticProgress
+  });
+  attributeAddBtn?.addEventListener('click', handleAddTelemetryAttribute);
+  staticAttributeAddBtn?.addEventListener('click', handleAddStaticAttribute);
+  attributeAutoList?.addEventListener('click', handleTelemetryAttributeListClick);
+  staticAttributeAutoList?.addEventListener('click', handleStaticAttributeListClick);
 
   applyServiceDefaults();
+  initializeAttributeInputs();
   startMachineStatusTicker();
   void loadInventory();
 }
@@ -148,6 +196,347 @@ function renderLoginRequiredState() {
 
   hideMessage(serviceGroupMsg);
   hideMessage(machineMsg);
+}
+
+function clampProgress(value, min = 0, max = 1) {
+  if (Number.isNaN(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+function hexToRgb(color) {
+  const cleaned = color.replace('#', '');
+  const bigint = Number.parseInt(cleaned, 16);
+  return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+}
+
+function mixColors(colorA, colorB, t) {
+  const [r1, g1, b1] = hexToRgb(colorA);
+  const [r2, g2, b2] = hexToRgb(colorB);
+  const mix = (c1, c2) => Math.round(c1 + (c2 - c1) * t);
+  return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`;
+}
+
+function applyToggleVisual({ toggle, progress, status }) {
+  if (!toggle) return;
+  const clamped = clampProgress(progress);
+  const progressValue = clamped.toFixed(3);
+  const startColor = mixColors(MANUAL_GRADIENT[0], AUTOMATIC_GRADIENT[0], clamped);
+  const endColor = mixColors(MANUAL_GRADIENT[1], AUTOMATIC_GRADIENT[1], clamped);
+  toggle.style.background = `linear-gradient(to right, ${startColor}, ${endColor})`;
+  toggle.style.setProperty('--toggle-progress', progressValue);
+
+  if (status) {
+    status.textContent = clamped >= 0.5 ? 'Automatic Builder' : 'Manual JSON';
+  }
+}
+
+function previewTelemetryProgress(progress) {
+  applyToggleVisual({
+    toggle: attributeModeToggle,
+    progress,
+    status: attributeModeStatus
+  });
+}
+
+function previewStaticProgress(progress) {
+  applyToggleVisual({
+    toggle: staticAttributesModeToggle,
+    progress,
+    status: staticAttributesModeStatus
+  });
+}
+
+function setupToggleControl({ toggleElement, getMode, setMode, preview }) {
+  if (!toggleElement) return;
+  let dragging = false;
+  let pointerId = null;
+  let suppressClick = false;
+  let startProgress = 0;
+  let hasMoved = false;
+
+  const computeProgress = (event) => {
+    const rect = toggleElement.getBoundingClientRect();
+    if (!rect.width) return getMode() === 'automatic' ? 1 : 0;
+    const ratio = (event.clientX - rect.left) / rect.width;
+    return clampProgress(ratio);
+  };
+
+  toggleElement.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    dragging = true;
+    pointerId = event.pointerId;
+    toggleElement.setPointerCapture(pointerId);
+    suppressClick = true;
+    startProgress = computeProgress(event);
+    hasMoved = false;
+    preview(startProgress);
+  });
+
+  toggleElement.addEventListener('pointermove', (event) => {
+    if (!dragging) return;
+    const current = computeProgress(event);
+    if (!hasMoved && Math.abs(current - startProgress) > 0.05) {
+      hasMoved = true;
+    }
+    preview(current);
+  });
+
+  const finishDrag = (event, cancelled = false) => {
+    if (!dragging) return;
+    const progress = cancelled ? (getMode() === 'automatic' ? 1 : 0) : computeProgress(event);
+    if (pointerId !== null) {
+      toggleElement.releasePointerCapture(pointerId);
+    }
+    dragging = false;
+    pointerId = null;
+
+    if (cancelled) {
+      preview(getMode() === 'automatic' ? 1 : 0);
+    } else {
+      if (!hasMoved) {
+        const nextMode = getMode() === 'manual' ? 'automatic' : 'manual';
+        setMode(nextMode);
+      } else {
+        setMode(progress >= 0.5 ? 'automatic' : 'manual');
+      }
+    }
+
+    setTimeout(() => {
+      suppressClick = false;
+    }, 0);
+  };
+
+  toggleElement.addEventListener('pointerup', (event) => finishDrag(event, false));
+  toggleElement.addEventListener('pointercancel', (event) => finishDrag(event, true));
+
+  toggleElement.addEventListener('click', (event) => {
+    if (suppressClick) {
+      event.preventDefault();
+      suppressClick = false;
+      return;
+    }
+    const nextMode = getMode() === 'manual' ? 'automatic' : 'manual';
+    setMode(nextMode);
+  });
+
+  toggleElement.addEventListener('keydown', (event) => {
+    if (event.key !== ' ' && event.key !== 'Enter') return;
+    event.preventDefault();
+    const nextMode = getMode() === 'manual' ? 'automatic' : 'manual';
+    setMode(nextMode);
+  });
+}
+
+function initializeAttributeInputs() {
+  resetAttributeInputs();
+  attributeModeToggle?.setAttribute('aria-checked', 'false');
+  staticAttributesModeToggle?.setAttribute('aria-checked', 'false');
+}
+
+function resetAttributeInputs() {
+  telemetryAttributeEntries = [];
+  staticAttributeEntries = [];
+  if (machineAttributesManual) {
+    machineAttributesManual.value = '';
+  }
+  if (machineStaticAttributesManual) {
+    machineStaticAttributesManual.value = '';
+  }
+  clearTelemetryAttributeFields();
+  clearStaticAttributeFields();
+  updateAttributeInputMode('manual');
+  updateStaticAttributeInputMode('manual');
+  renderTelemetryAttributeList();
+  renderStaticAttributeList();
+}
+
+function updateAttributeInputMode(mode = 'manual') {
+  telemetryInputMode = mode === 'automatic' ? 'automatic' : 'manual';
+  attributeManualContainer?.classList.toggle('hidden', telemetryInputMode === 'automatic');
+  attributeAutomaticContainer?.classList.toggle('hidden', telemetryInputMode !== 'automatic');
+  const isAutomatic = telemetryInputMode === 'automatic';
+
+  if (attributeModeToggle) {
+    attributeModeToggle.dataset.mode = telemetryInputMode;
+    attributeModeToggle.setAttribute('aria-checked', isAutomatic ? 'true' : 'false');
+  }
+  applyToggleVisual({
+    toggle: attributeModeToggle,
+    progress: isAutomatic ? 1 : 0,
+    status: attributeModeStatus
+  });
+}
+
+function updateStaticAttributeInputMode(mode = 'manual') {
+  staticAttributesInputModeState = mode === 'automatic' ? 'automatic' : 'manual';
+  const isAutomatic = staticAttributesInputModeState === 'automatic';
+
+  staticAttributesManualContainer?.classList.toggle('hidden', isAutomatic);
+  staticAttributesAutomaticContainer?.classList.toggle('hidden', !isAutomatic);
+
+  if (staticAttributesModeToggle) {
+    staticAttributesModeToggle.dataset.mode = staticAttributesInputModeState;
+    staticAttributesModeToggle.setAttribute('aria-checked', isAutomatic ? 'true' : 'false');
+  }
+  applyToggleVisual({
+    toggle: staticAttributesModeToggle,
+    progress: isAutomatic ? 1 : 0,
+    status: staticAttributesModeStatus
+  });
+}
+
+function toggleTelemetryMode() {
+  const nextMode = telemetryInputMode === 'manual' ? 'automatic' : 'manual';
+  updateAttributeInputMode(nextMode);
+}
+
+function toggleStaticAttributeMode() {
+  const nextMode = staticAttributesInputModeState === 'manual' ? 'automatic' : 'manual';
+  updateStaticAttributeInputMode(nextMode);
+}
+
+function clearTelemetryAttributeFields() {
+  if (attributeObjectId) attributeObjectId.value = '';
+  if (attributeName) attributeName.value = '';
+  if (attributeType) attributeType.value = '';
+}
+
+function clearStaticAttributeFields() {
+  if (staticAttributeName) staticAttributeName.value = '';
+  if (staticAttributeType) staticAttributeType.value = '';
+  if (staticAttributeValue) staticAttributeValue.value = '';
+}
+
+function handleAddTelemetryAttribute(event) {
+  event.preventDefault();
+  hideMessage(machineMsg);
+  if (telemetryInputMode !== 'automatic') {
+    showMessage(machineMsg, 'Toggle to Automatic builder to add telemetry attributes.');
+    return;
+  }
+
+  const objectId = attributeObjectId?.value.trim() || '';
+  const name = attributeName?.value.trim() || '';
+  const type = attributeType?.value.trim() || '';
+
+  if (!objectId || !name || !type) {
+    showMessage(machineMsg, 'Provide object ID, name, and type for the telemetry attribute.');
+    return;
+  }
+
+  telemetryAttributeEntries.push({ object_id: objectId, name, type });
+  renderTelemetryAttributeList();
+  clearTelemetryAttributeFields();
+}
+
+function handleTelemetryAttributeListClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest('[data-action="remove-telemetry-attribute"]');
+  if (!button) return;
+  event.preventDefault();
+  const index = Number.parseInt(button.getAttribute('data-index') || '', 10);
+  if (Number.isNaN(index)) return;
+
+  telemetryAttributeEntries.splice(index, 1);
+  renderTelemetryAttributeList();
+}
+
+function renderTelemetryAttributeList() {
+  if (!attributeAutoList) return;
+  if (!telemetryAttributeEntries.length) {
+    attributeAutoList.innerHTML =
+      '<li class="px-3 py-2 text-xs text-gray-500">No attributes added yet.</li>';
+    return;
+  }
+
+  attributeAutoList.innerHTML = telemetryAttributeEntries
+    .map((attr, index) => {
+      const label = [
+        `<span class="font-semibold text-gray-800">${escapeHtml(attr.name)}</span>`,
+        `<span class="ml-2 text-xs text-gray-500">${escapeHtml(attr.object_id)}</span>`,
+        `<span class="ml-2 text-xs text-indigo-600">${escapeHtml(attr.type)}</span>`
+      ].join('');
+      return `
+        <li class="px-3 py-2 flex items-center justify-between">
+          <span class="text-sm text-gray-700">${label}</span>
+          <button
+            type="button"
+            class="text-xs text-red-600 hover:underline"
+            data-action="remove-telemetry-attribute"
+            data-index="${index}"
+          >
+            Remove
+          </button>
+        </li>`;
+    })
+    .join('');
+}
+
+function handleAddStaticAttribute(event) {
+  event.preventDefault();
+  hideMessage(machineMsg);
+  if (staticAttributesInputModeState !== 'automatic') {
+    showMessage(machineMsg, 'Toggle to Automatic builder to add static attributes.');
+    return;
+  }
+
+  const name = staticAttributeName?.value.trim() || '';
+  const type = staticAttributeType?.value.trim() || '';
+  const value = staticAttributeValue?.value.trim() || '';
+
+  if (!name || !type || !value) {
+    showMessage(machineMsg, 'Provide name, type, and value for the static attribute.');
+    return;
+  }
+
+  staticAttributeEntries.push({ name, type, value });
+  renderStaticAttributeList();
+  clearStaticAttributeFields();
+}
+
+function handleStaticAttributeListClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest('[data-action="remove-static-attribute"]');
+  if (!button) return;
+  event.preventDefault();
+  const index = Number.parseInt(button.getAttribute('data-index') || '', 10);
+  if (Number.isNaN(index)) return;
+
+  staticAttributeEntries.splice(index, 1);
+  renderStaticAttributeList();
+}
+
+function renderStaticAttributeList() {
+  if (!staticAttributeAutoList) return;
+  if (!staticAttributeEntries.length) {
+    staticAttributeAutoList.innerHTML =
+      '<li class="px-3 py-2 text-xs text-gray-500">No static attributes added yet.</li>';
+    return;
+  }
+
+  staticAttributeAutoList.innerHTML = staticAttributeEntries
+    .map((attr, index) => {
+      const label = [
+        `<span class="font-semibold text-gray-800">${escapeHtml(attr.name)}</span>`,
+        `<span class="ml-2 text-xs text-indigo-600">${escapeHtml(attr.type)}</span>`,
+        `<span class="ml-2 text-xs text-gray-500">${escapeHtml(attr.value)}</span>`
+      ].join('');
+      return `
+        <li class="px-3 py-2 flex items-center justify-between">
+          <span class="text-sm text-gray-700">${label}</span>
+          <button
+            type="button"
+            class="text-xs text-red-600 hover:underline"
+            data-action="remove-static-attribute"
+            data-index="${index}"
+          >
+            Remove
+          </button>
+        </li>`;
+    })
+    .join('');
 }
 
 async function syncMachineActivityData() {
@@ -432,7 +821,6 @@ async function handleMachineSubmit(event) {
   const description = machineDescription?.value.trim() || '';
   const selectedServiceKey = machineServiceGroup?.value || '';
   const status = machineStatus?.value || '';
-  const attributesRaw = machineAttributes?.value.trim() || '';
 
   if (!deviceId) {
     showMessage(machineMsg, 'Device ID is required.');
@@ -453,24 +841,22 @@ async function handleMachineSubmit(event) {
   // Use the entity type defined by the selected service group
   const entityType = targetService?.entityType || 'Thing';
 
-  let attributes = [];
-  if (attributesRaw) {
-    try {
-      const parsed = JSON.parse(attributesRaw);
-      if (!Array.isArray(parsed)) throw new Error('Attributes JSON must be an array.');
-      attributes = parsed;
-    } catch (error) {
-      showMessage(machineMsg, `Attributes JSON error: ${error.message}`);
-      return;
-    }
+  const attributes = collectTelemetryAttributes();
+  if (attributes === null) {
+    return;
   }
 
-  const staticAttributes = buildStaticAttributes({
+  const defaultStaticAttributes = buildDefaultStaticAttributes({
     friendlyName,
     model,
     description,
     status
   });
+  const customStaticAttributes = collectStaticAttributesInput();
+  if (customStaticAttributes === null) {
+    return;
+  }
+  const staticAttributes = [...defaultStaticAttributes, ...customStaticAttributes];
 
   const payload = {
     devices: [
@@ -514,6 +900,7 @@ async function handleMachineSubmit(event) {
     if (machineServiceGroup && lastSelection) {
       machineServiceGroup.value = lastSelection;
     }
+    resetAttributeInputs();
     if (machineStatus) {
       machineStatus.value = status || 'Online';
     }
@@ -780,10 +1167,50 @@ function populateApikeyFromName() {
     .slice(0, 64);
 }
 
+function collectTelemetryAttributes() {
+  if (telemetryInputMode === 'automatic') {
+    return telemetryAttributeEntries.map((entry) => ({ ...entry }));
+  }
+
+  const raw = machineAttributesManual?.value.trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error('Attributes JSON must be an array.');
+    }
+    return parsed;
+  } catch (error) {
+    showMessage(machineMsg, `Attributes JSON error: ${error.message}`);
+    return null;
+  }
+}
+
+function collectStaticAttributesInput() {
+  if (staticAttributesInputModeState === 'automatic') {
+    return staticAttributeEntries.map((entry) => ({ ...entry }));
+  }
+
+  const raw = machineStaticAttributesManual?.value.trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error('Static attributes JSON must be an array.');
+    }
+    return parsed;
+  } catch (error) {
+    showMessage(machineMsg, `Static attributes JSON error: ${error.message}`);
+    return null;
+  }
+}
+
 /**
  * Create static attributes payload from form fields.
  */
-function buildStaticAttributes({ friendlyName, model, description, status }) {
+function buildDefaultStaticAttributes({ friendlyName, model, description, status }) {
   const attrs = [];
 
   if (friendlyName) {

@@ -482,7 +482,7 @@
                     <label for="machineServiceGroup" class="block text-sm font-medium text-gray-700 mb-1">Service group</label>
                     <select
                       id="machineServiceGroup"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
                       disabled
                     >
                       <option value="">Add a service group first</option>
@@ -508,7 +508,197 @@
                     placeholder="e.g. HP-2000"
                   />
                 </div>
-                <div class="grid md:grid-cols-2 gap-4">
+                <div class="space-y-4">
+                  <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <h4 class="text-sm font-semibold text-gray-800">Telemetry Attributes</h4>
+                        <p class="text-xs text-gray-500">Define how this device sends live telemetry.</p>
+                      </div>
+                    </div>
+                    <div class="mt-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wide text-indigo-600">Mode</span>
+                        <span id="attributeModeStatus" class="text-xs text-gray-500">Manual JSON</span>
+                      </div>
+                      <div
+                        id="attributeModeToggle"
+                        class="mode-toggle relative w-full h-12 rounded-full select-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                        role="switch"
+                        aria-checked="false"
+                        tabindex="0"
+                      >
+                        <!-- gradient handled via CSS -->
+                        <div class="mode-labels absolute inset-0 flex items-center justify-between px-4 text-sm font-semibold uppercase tracking-wide text-white pointer-events-none">
+                          <span class="mode-label-manual transition-opacity duration-300 ease-out">Manual</span>
+                          <span class="mode-label-auto transition-opacity duration-300 ease-out opacity-0">Automatic</span>
+                        </div>
+                        <div class="mode-knob absolute top-1 left-1 h-10 w-10 rounded-full bg-white shadow-lg transition-all duration-300 ease-out pointer-events-none"></div>
+                      </div>
+                    </div>
+                    <div id="attributeManualContainer" class="mt-3">
+                      <textarea
+                        id="machineAttributesManual"
+                        rows="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder='[{"object_id":"state/machine_status","name":"machineStatus","type":"integer"}]'
+                      ></textarea>
+                      <p class="mt-2 text-xs text-gray-500">
+                        Provide IoT Agent attributes in JSON format. Leave blank to register without telemetry mappings.
+                      </p>
+                    </div>
+                    <div id="attributeAutomaticContainer" class="hidden mt-4 space-y-3">
+                      <div class="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label for="attributeObjectId" class="block text-xs font-medium text-gray-600 mb-1">Object ID</label>
+                          <input
+                            id="attributeObjectId"
+                            type="text"
+                            class="w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="state/name_state"
+                          />
+                        </div>
+                        <div>
+                          <label for="attributeName" class="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                          <input
+                            id="attributeName"
+                            type="text"
+                            class="w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="machineState"
+                          />
+                        </div>
+                        <div>
+                          <label for="attributeType" class="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                          <select
+                            id="attributeType"
+                            class="w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          >
+                            <option value="">Select type</option>
+                            <option value="integer">integer</option>
+                            <option value="float">float</option>
+                            <option value="string">string</option>
+                            <option value="boolean">boolean</option>
+                            <option value="datetime">datetime</option>
+                            <option value="StructuredValue">StructuredValue</option>
+                            <option value="Relationship">Relationship</option>
+                            <option value="geo:point">geo:point</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <p class="text-xs text-gray-500">Add each telemetry attribute you want to expose.</p>
+                        <button
+                          type="button"
+                          id="attributeAddBtn"
+                          class="inline-flex items-center rounded-md border border-indigo-300 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        >
+                          <i class="fas fa-plus mr-1"></i>Add attribute
+                        </button>
+                      </div>
+                      <ul
+                        id="attributeAutoList"
+                        class="rounded-md border border-gray-200 bg-white divide-y divide-gray-200 text-sm text-gray-700"
+                      >
+                        <li class="px-3 py-2 text-xs text-gray-500">No attributes added yet.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-center justify-between">
+                      <div>
+                        <h4 class="text-sm font-semibold text-gray-800">Static Attributes (optional)</h4>
+                        <p class="text-xs text-gray-500">Describe fixed metadata such as brand or location.</p>
+                      </div>
+                    </div>
+                    <div class="mt-3">
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wide text-indigo-600">Mode</span>
+                        <span id="staticAttributesModeStatus" class="text-xs text-gray-500">Manual JSON</span>
+                      </div>
+                      <div
+                      id="staticAttributesModeToggle"
+                      class="mode-toggle relative w-full h-12 rounded-full select-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                      role="switch"
+                      aria-checked="false"
+                      tabindex="0"
+                    >
+                        <!-- gradient handled via CSS -->
+                        <div class="mode-labels absolute inset-0 flex items-center justify-between px-4 text-sm font-semibold uppercase tracking-wide text-white pointer-events-none">
+                          <span class="mode-label-manual transition-opacity duration-300 ease-out">Manual</span>
+                          <span class="mode-label-auto transition-opacity duration-300 ease-out opacity-0">Automatic</span>
+                        </div>
+                        <div class="mode-knob absolute top-1 left-1 h-10 w-10 rounded-full bg-white shadow-lg transition-all duration-300 ease-out pointer-events-none"></div>
+                      </div>
+                    </div>
+                    <div id="staticAttributesManualContainer" class="mt-3">
+                      <textarea
+                        id="machineStaticAttributesManual"
+                        rows="3"
+                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder='[  { "name": "brand", "type": "Text", "value": "TEXPCT" }, { "name": "location", "type": "geo:point", "value": "41.1785, -8.6087" }, { "name": "installedOn", "type": "DateTime", "value": "2025-01-12T09:00:00Z" } ]'
+                      ></textarea>
+                      <p class="mt-2 text-xs text-gray-500">
+                        Provide additional static metadata in JSON format. Leave blank to skip.
+                      </p>
+                    </div>
+                    <div id="staticAttributesAutomaticContainer" class="hidden mt-4 space-y-3">
+                      <div class="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label for="staticAttributeName" class="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                          <input
+                            id="staticAttributeName"
+                            type="text"
+                            class="w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="brand"
+                          />
+                        </div>
+                        <div>
+                          <label for="staticAttributeType" class="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                          <select
+                            id="staticAttributeType"
+                            class="w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          >
+                            <option value="">Select type</option>
+                            <option value="integer">integer</option>
+                            <option value="float">float</option>
+                            <option value="string">string</option>
+                            <option value="boolean">boolean</option>
+                            <option value="datetime">datetime</option>
+                            <option value="StructuredValue">StructuredValue</option>
+                            <option value="Relationship">Relationship</option>
+                            <option value="geo:point">geo:point</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label for="staticAttributeValue" class="block text-xs font-medium text-gray-600 mb-1">Value</label>
+                          <input
+                            id="staticAttributeValue"
+                            type="text"
+                            class="w-full px-2 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="TEXPCT"
+                          />
+                        </div>
+                      </div>
+                      <div class="flex items-center justify-between">
+                        <p class="text-xs text-gray-500">Add fixed metadata entries (e.g., brand, location).</p>
+                        <button
+                          type="button"
+                          id="staticAttributeAddBtn"
+                          class="inline-flex items-center rounded-md border border-indigo-300 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        >
+                          <i class="fas fa-plus mr-1"></i>Add static attribute
+                        </button>
+                      </div>
+                      <ul
+                        id="staticAttributeAutoList"
+                        class="rounded-md border border-gray-200 bg-white divide-y divide-gray-200 text-sm text-gray-700"
+                      >
+                        <li class="px-3 py-2 text-xs text-gray-500">No static attributes added yet.</li>
+                      </ul>
+                    </div>
+                  </div>
+
                   <div>
                     <label for="machineStatus" class="block text-sm font-medium text-gray-700 mb-1">Status tag</label>
                     <select
@@ -519,18 +709,6 @@
                       <option value="Maintenance">Maintenance</option>
                       <option value="Offline">Offline</option>
                     </select>
-                  </div>
-                  <div>
-                    <label for="machineAttributes" class="block text-sm font-medium text-gray-700 mb-1">Attributes (JSON, optional)</label>
-                    <textarea
-                      id="machineAttributes"
-                      rows="3"
-                      class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                      placeholder='[{"object_id":"state/machine_status","name":"machineStatus","type":"Integer"}]'
-                    ></textarea>
-                    <p class="mt-2 text-xs text-gray-500">
-                      Define IoT Agent attributes in JSON format. Leave blank to register without telemetry mappings.
-                    </p>
                   </div>
                 </div>
                 <div>
