@@ -8,6 +8,7 @@ import {
     userDropdown, usersTab, rolesTab, auditTab, settingsTab, orionTab, digitalTwinTab, inventoryTab, 
     usersSection, rolesSection, auditSection, settingsSection, orionSection, digitalTwinSection, inventorySection
 } from './dom-elements.js';
+import { clearSession } from './config.js';
 
 /**
  * Show/hide dropdown menu
@@ -21,6 +22,7 @@ export function showDropdown(show = true) {
  * Reset the entire application (reload page)
  */
 export function resetApp() {
+    clearSession();
     location.reload();
 }
 

@@ -6,7 +6,8 @@
 
 import { 
         KEYROCK_BASE, KEYROCK_CLIENT_ID, KEYROCK_CLIENT_SECRET, 
-        setSessionToken, setCurrentUserEmail, setKeystoneToken
+        setSessionToken, setCurrentUserEmail, setKeystoneToken,
+        restoreSessionFromStorage, sessionToken, currentUserEmail
 } from './config.js';
 import {
     emailInput, passwordInput, loginBtnText, loginSpinner, btnLogin,
@@ -95,7 +96,7 @@ export async function handleLogin() {
 }
 
         // Update UI to authenticated state
-        await setupAuthenticatedUI(email);
+        await applyAuthenticatedUI(email);
 
     } catch (e) {
         console.error("Login error:", e);
@@ -112,10 +113,10 @@ export async function handleLogin() {
  * Set up the UI for authenticated state
  * @param {string} email - User email to display
  */
-async function setupAuthenticatedUI(email) {
+export async function applyAuthenticatedUI(email) {
     // Show authenticated UI elements
     userMenuWrapper.classList.remove("hidden");
-    loggedInEmail.textContent = email;
+    loggedInEmail.textContent = email || currentUserEmail || "Authenticated user";
     loginSection.classList.add("hidden");
     tabsNav.classList.remove("hidden");
     usersSection.classList.remove("disabled-section");
@@ -129,8 +130,16 @@ async function setupAuthenticatedUI(email) {
 
     // Load initial data
     listUsers();
-    await listLogs();
-    await refreshInventory();
+    try {
+        await listLogs();
+    } catch (err) {
+        console.error("Failed to load Orion logs:", err);
+    }
+    try {
+        await refreshInventory();
+    } catch (err) {
+        console.error("Failed to load inventory:", err);
+    }
     switchTab("users");
 }
 
@@ -140,6 +149,20 @@ async function setupAuthenticatedUI(email) {
  */
 export function isAuthenticated() {
     return Boolean(sessionToken);
+}
+
+/**
+ * Attempt to restore session from persisted storage and apply authenticated UI.
+ * @returns {Promise<boolean>} True if a session was restored.
+ */
+export async function resumeStoredSession(restoredState) {
+    const state = restoredState || restoreSessionFromStorage();
+    if (!state || !state.sessionToken) {
+        return false;
+    }
+    const email = state.currentUserEmail || emailInput.value.trim();
+    await applyAuthenticatedUI(email);
+    return true;
 }
 
 /**

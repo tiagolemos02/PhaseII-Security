@@ -17,7 +17,7 @@ import {
   machineServiceGroup,
   machineStatus,
   attributeModeToggle,
-  attributeModeStatus,
+  attributeModeKnob,
   attributeManualContainer,
   attributeAutomaticContainer,
   machineAttributesManual,
@@ -27,7 +27,7 @@ import {
   attributeAddBtn,
   attributeAutoList,
   staticAttributesModeToggle,
-  staticAttributesModeStatus,
+  staticAttributesModeKnob,
   staticAttributesManualContainer,
   machineStaticAttributesManual,
   staticAttributesAutomaticContainer,
@@ -113,6 +113,10 @@ export function initInventory() {
   machineForm?.addEventListener('submit', handleMachineSubmit);
   serviceGroupName?.addEventListener('blur', populateApikeyFromName);
   serviceGroupsTableBody?.addEventListener('click', handleServiceGroupTableClick);
+  machinesTableBody?.addEventListener('click', handleMachinesTableClick);
+  if (typeof window !== 'undefined') {
+    window.addEventListener('device-activity-updated', handleDeviceActivityUpdated);
+  }
   setupToggleControl({
     toggleElement: attributeModeToggle,
     getMode: () => telemetryInputMode,
@@ -216,7 +220,7 @@ function mixColors(colorA, colorB, t) {
   return `rgb(${mix(r1, r2)}, ${mix(g1, g2)}, ${mix(b1, b2)})`;
 }
 
-function applyToggleVisual({ toggle, progress, status }) {
+function applyToggleVisual({ toggle, progress, knob }) {
   if (!toggle) return;
   const clamped = clampProgress(progress);
   const progressValue = clamped.toFixed(3);
@@ -225,8 +229,14 @@ function applyToggleVisual({ toggle, progress, status }) {
   toggle.style.background = `linear-gradient(to right, ${startColor}, ${endColor})`;
   toggle.style.setProperty('--toggle-progress', progressValue);
 
-  if (status) {
-    status.textContent = clamped >= 0.5 ? 'Automatic Builder' : 'Manual JSON';
+  if (knob) {
+    const trackWidth = toggle.clientWidth || 0;
+    const knobWidth = knob.offsetWidth || 0;
+    const knobStyles =
+      typeof window !== 'undefined' && window.getComputedStyle ? window.getComputedStyle(knob) : null;
+    const leftOffset = knobStyles ? Number.parseFloat(knobStyles.left) || 0 : 0;
+    const maxShift = Math.max(0, trackWidth - knobWidth - leftOffset * 2);
+    knob.style.transform = `translateX(${(maxShift * clamped).toFixed(2)}px)`;
   }
 }
 
@@ -234,7 +244,7 @@ function previewTelemetryProgress(progress) {
   applyToggleVisual({
     toggle: attributeModeToggle,
     progress,
-    status: attributeModeStatus
+    knob: attributeModeKnob
   });
 }
 
@@ -242,7 +252,7 @@ function previewStaticProgress(progress) {
   applyToggleVisual({
     toggle: staticAttributesModeToggle,
     progress,
-    status: staticAttributesModeStatus
+    knob: staticAttributesModeKnob
   });
 }
 
@@ -292,6 +302,7 @@ function setupToggleControl({ toggleElement, getMode, setMode, preview }) {
 
     if (cancelled) {
       preview(getMode() === 'automatic' ? 1 : 0);
+      suppressClick = false;
     } else {
       if (!hasMoved) {
         const nextMode = getMode() === 'manual' ? 'automatic' : 'manual';
@@ -299,11 +310,11 @@ function setupToggleControl({ toggleElement, getMode, setMode, preview }) {
       } else {
         setMode(progress >= 0.5 ? 'automatic' : 'manual');
       }
+      suppressClick = true;
+      setTimeout(() => {
+        suppressClick = false;
+      }, 150);
     }
-
-    setTimeout(() => {
-      suppressClick = false;
-    }, 0);
   };
 
   toggleElement.addEventListener('pointerup', (event) => finishDrag(event, false));
@@ -363,7 +374,7 @@ function updateAttributeInputMode(mode = 'manual') {
   applyToggleVisual({
     toggle: attributeModeToggle,
     progress: isAutomatic ? 1 : 0,
-    status: attributeModeStatus
+    knob: attributeModeKnob
   });
 }
 
@@ -381,7 +392,7 @@ function updateStaticAttributeInputMode(mode = 'manual') {
   applyToggleVisual({
     toggle: staticAttributesModeToggle,
     progress: isAutomatic ? 1 : 0,
-    status: staticAttributesModeStatus
+    knob: staticAttributesModeKnob
   });
 }
 
@@ -587,9 +598,10 @@ async function fetchServiceGroups() {
  * Fetch registered IoT devices.
  */
 async function fetchMachines() {
-  if (!machinesTableBody) return;
   loadingMachines = true;
-  setMachinesLoading();
+  if (machinesTableBody) {
+    setMachinesLoading();
+  }
 
   try {
     const resp = await fetch(`${IOT_AGENT_BASE}/iot/devices`, {
@@ -603,14 +615,17 @@ async function fetchMachines() {
 
     const payload = await resp.json().catch(() => ({}));
     const entries = Array.isArray(payload.devices) ? payload.devices : [];
-    machines = entries.map(normalizeDevice);
+    const normalizedDevices = entries.map(normalizeDevice);
+    machines = mergeDuplicateDevices(normalizedDevices);
     await syncMachineActivityData();
     updateMachineStatusesFromStore();
     hideMessage(machineMsg);
   } catch (error) {
     console.error('Error loading machines:', error);
     machines = [];
-    renderMachinesError(error);
+    if (machinesTableBody) {
+      renderMachinesError(error);
+    }
     showMessage(machineMsg, `Error loading machines: ${error.message}`);
   } finally {
     loadingMachines = false;
@@ -803,6 +818,70 @@ async function handleDeleteServiceGroup(button, group) {
   }
 }
 
+function handleMachinesTableClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+
+  const deleteBtn = target.closest('[data-action="delete-machine"]');
+  if (!deleteBtn) return;
+
+  const button = deleteBtn instanceof HTMLButtonElement ? deleteBtn : null;
+  if (!button) return;
+
+  const deviceId = button.getAttribute('data-device-id');
+  if (!deviceId) return;
+
+  const machine = machines.find((entry) => entry.deviceId === deviceId);
+  if (!machine) return;
+
+  if (
+    typeof window !== 'undefined' &&
+    !window.confirm(`Delete machine "${deviceId}"? This cannot be undone.`)
+  ) {
+    return;
+  }
+
+  void handleDeleteMachine(button, machine);
+}
+
+async function handleDeleteMachine(button, machine) {
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Deleting...';
+
+  try {
+    const url = `${IOT_AGENT_BASE}/iot/devices/${encodeURIComponent(machine.deviceId)}`;
+    const headers = buildHeaders();
+
+    const resp = await fetch(url, {
+      method: 'DELETE',
+      headers
+    });
+
+    if (!resp.ok) {
+      throw new Error(await extractError(resp));
+    }
+
+    showMessage(machineMsg, `Machine ${machine.deviceId} deleted successfully.`, false);
+
+    await fetchMachines();
+    renderMachines();
+  } catch (error) {
+    console.error('Error deleting machine:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    showMessage(machineMsg, `Error deleting machine: ${message}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText || 'Delete';
+  }
+}
+
+function handleDeviceActivityUpdated() {
+  if (loadingMachines || !machinesTableBody) return;
+  if (!machines.length) return;
+  renderMachines();
+}
+
 /**
  * Handle machine submission by calling the IoT Agent.
  */
@@ -850,7 +929,12 @@ async function handleMachineSubmit(event) {
     friendlyName,
     model,
     description,
-    status
+    status,
+    serviceKey: targetService.key,
+    serviceApikey: targetService.apikey,
+    serviceResource: targetService.resource,
+    serviceFiware: targetService.fiwareService,
+    serviceSubservice: targetService.subservice
   });
   const customStaticAttributes = collectStaticAttributesInput();
   if (customStaticAttributes === null) {
@@ -936,7 +1020,9 @@ function renderServiceGroups() {
       .map(
         (group) => `
         <tr>
-          <td class="px-5 py-3 text-sm font-semibold text-gray-800">${escapeHtml(group.apikey || 'N/A')}</td>
+          <td class="px-5 py-3 text-sm font-semibold text-gray-800">${escapeHtml(
+            group.apikey ? group.apikey : 'N/A'
+          )}</td>
           <td class="px-5 py-3 text-sm text-gray-700">
             ${
               group.displayName
@@ -1000,6 +1086,7 @@ function updateMachineStatusesFromStore() {
 
     if (activity) {
       machine.lastSeen = activity.lastUpdateIso || '';
+      machine.lastSeenAttribute = activity.lastUpdateAttribute || '';
       machine.dynamicStatus = activity.status;
       machine.activityAgeMs = activity.ageMs ?? null;
 
@@ -1012,6 +1099,7 @@ function updateMachineStatusesFromStore() {
       }
     } else {
       machine.lastSeen = '';
+      machine.lastSeenAttribute = '';
       machine.dynamicStatus = '';
       machine.activityAgeMs = null;
       machine.currentStatus = staticStatus || '';
@@ -1030,23 +1118,20 @@ function renderMachines() {
 
   if (!machines.length) {
     machinesTableBody.innerHTML =
-      "<tr><td colspan='5' class='px-5 py-4 text-center text-gray-500'>No machines registered.</td></tr>";
+      "<tr><td colspan='6' class='px-5 py-4 text-center text-gray-500'>No machines registered.</td></tr>";
   } else {
     const rows = machines
       .slice()
       .sort((a, b) => a.deviceId.localeCompare(b.deviceId))
       .map((machine) => {
-        const service =
-          machine.serviceKey
-            ? serviceGroups.find((svc) => svc.key === machine.serviceKey)
-            : serviceGroups.find(
-                (svc) =>
-                  svc.apikey === machine.apikey &&
-                  svc.resource === machine.resource
-              );
-        const serviceLabel =
-          service ? getServiceLabel(service) : machine.apikey || machine.resource || 'N/A';
+        const service = findServiceGroupForMachine(machine);
+        const serviceLabel = service ? getServiceLabel(service) : getMachineServiceFallback(machine);
         const details = [];
+
+        const deviceMetaParts = [];
+        if (machine.model) deviceMetaParts.push(machine.model);
+        if (machine.assetId) deviceMetaParts.push(machine.assetId);
+        const deviceMeta = deviceMetaParts.join(' / ');
 
         if (machine.model) {
           details.push(`<div>Model: ${escapeHtml(machine.model)}</div>`);
@@ -1062,18 +1147,49 @@ function renderMachines() {
         }
 
         if (machine.lastSeen) {
+          const lastSeenTime = formatLastSeen(machine.lastSeen);
+          const attributeLabel = asNonEmptyString(machine.lastSeenAttribute)
+            ? ` (${escapeHtml(machine.lastSeenAttribute)})`
+            : '';
           details.push(
-            `<div class="text-xs text-gray-500 mt-2">Last data: ${escapeHtml(formatLastSeen(machine.lastSeen))}</div>`
+            `<div class="text-xs text-gray-500 mt-2">Last data${attributeLabel}: ${escapeHtml(
+              lastSeenTime
+            )}</div>`
           );
         }
 
+        const attributeCount =
+          (Array.isArray(machine.attributes) ? machine.attributes.length : 0) +
+          (Array.isArray(machine.staticAttributes) ? machine.staticAttributes.length : 0);
+
         details.push(
-          `<div class="text-xs text-gray-500">Attributes: ${machine.attributes.length}</div>`
+          `<div class="text-xs text-gray-500">Attributes: ${attributeCount}</div>`
         );
+
+        const serviceDetails = [];
+        if (service && asNonEmptyString(service.resource)) {
+          serviceDetails.push(
+            `<div class="text-xs text-gray-500">${escapeHtml(normalizeResourcePath(service.resource))}</div>`
+          );
+        } else {
+          const machineResource = asNonEmptyString(machine.resource);
+          if (machineResource) {
+            serviceDetails.push(
+              `<div class="text-xs text-gray-500">${escapeHtml(normalizeResourcePath(machineResource))}</div>`
+            );
+          }
+        }
 
         return `
         <tr>
-          <td class="px-5 py-3 text-sm font-medium text-gray-900">${escapeHtml(machine.deviceId)}</td>
+          <td class="px-5 py-3 text-sm font-medium text-gray-900">
+            <div>${escapeHtml(machine.deviceId)}</div>
+            ${
+              deviceMeta
+                ? `<div class="text-xs text-gray-500">${escapeHtml(deviceMeta)}</div>`
+                : ''
+            }
+          </td>
           <td class="px-5 py-3 text-sm text-gray-700">
             <div class="font-semibold text-gray-800">${escapeHtml(machine.friendlyName || machine.entityName)}</div>
             ${
@@ -1082,9 +1198,22 @@ function renderMachines() {
                 : ''
             }
           </td>
-          <td class="px-5 py-3 text-sm text-gray-700">${escapeHtml(serviceLabel)}</td>
+          <td class="px-5 py-3 text-sm text-gray-700">
+            <div>${escapeHtml(serviceLabel)}</div>
+            ${serviceDetails.join('')}
+          </td>
           <td class="px-5 py-3 text-sm">${renderStatus(machine.currentStatus || machine.status || 'Unknown')}</td>
           <td class="px-5 py-3 text-sm text-gray-700">${details.join('')}</td>
+          <td class="px-5 py-3 text-sm text-right">
+            <button
+              type="button"
+              class="inline-flex items-center rounded-md border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+              data-action="delete-machine"
+              data-device-id="${escapeHtml(machine.deviceId)}"
+            >
+              <i class="fas fa-trash-alt mr-1"></i>Delete
+            </button>
+          </td>
         </tr>`;
       })
       .join('');
@@ -1210,7 +1339,17 @@ function collectStaticAttributesInput() {
 /**
  * Create static attributes payload from form fields.
  */
-function buildDefaultStaticAttributes({ friendlyName, model, description, status }) {
+function buildDefaultStaticAttributes({
+  friendlyName,
+  model,
+  description,
+  status,
+  serviceKey = '',
+  serviceApikey = '',
+  serviceResource = '',
+  serviceFiware = '',
+  serviceSubservice = ''
+}) {
   const attrs = [];
 
   if (friendlyName) {
@@ -1224,6 +1363,21 @@ function buildDefaultStaticAttributes({ friendlyName, model, description, status
   }
   if (status) {
     attrs.push({ name: 'operationalStatus', type: 'Text', value: status });
+  }
+  if (serviceKey) {
+    attrs.push({ name: 'serviceGroupKey', type: 'Text', value: serviceKey });
+  }
+  if (serviceResource) {
+    attrs.push({ name: 'serviceGroupResource', type: 'Text', value: serviceResource });
+  }
+  if (serviceApikey) {
+    attrs.push({ name: 'serviceGroupApikey', type: 'Text', value: serviceApikey });
+  }
+  if (serviceFiware) {
+    attrs.push({ name: 'serviceGroupFiware', type: 'Text', value: serviceFiware });
+  }
+  if (serviceSubservice) {
+    attrs.push({ name: 'serviceGroupSubservice', type: 'Text', value: serviceSubservice });
   }
 
   return attrs;
@@ -1266,15 +1420,82 @@ function normalizeServiceGroup(entry = {}) {
 /**
  * Normalise IoT Agent device response.
  */
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const str = asNonEmptyString(value);
+    if (str) return str;
+  }
+  return '';
+}
+
 function normalizeDevice(entry = {}) {
   const staticMap = toAttributeMap(entry.static_attributes);
   const serviceInfo = entry.service || {};
-  const apikey = serviceInfo.apikey ?? entry.apikey ?? '';
-  const resource = serviceInfo.resource ?? entry.resource ?? '';
-  const cbroker = serviceInfo.cbroker ?? entry.cbroker ?? '';
-  const fiwareService = serviceInfo.service || entry.service || FIWARE_SERVICE;
-  const subservice = serviceInfo.subservice || entry.subservice || FIWARE_SERVICEPATH || '/';
-  const entityType = entry.entity_type || serviceInfo.entity_type || ENTITY_TYPE;
+  const storedServiceKey = asNonEmptyString(staticMap.get('serviceGroupKey'));
+  const storedResource = asNonEmptyString(staticMap.get('serviceGroupResource'));
+  const storedApikey = asNonEmptyString(staticMap.get('serviceGroupApikey'));
+  const apikey = firstNonEmpty(
+    serviceInfo.apikey,
+    serviceInfo.apiKey,
+    serviceInfo.api_key,
+    entry.apikey,
+    entry.apiKey,
+    entry.api_key,
+    storedApikey
+  );
+  const resource = firstNonEmpty(
+    serviceInfo.resource,
+    serviceInfo.resourcePath,
+    serviceInfo.resource_path,
+    entry.resource,
+    entry.resourcePath,
+    entry.resource_path,
+    storedResource
+  );
+  const cbroker = firstNonEmpty(
+    serviceInfo.cbroker,
+    serviceInfo.cbBroker,
+    serviceInfo.cBroker,
+    entry.cbroker,
+    entry.cbBroker,
+    entry.cBroker
+  );
+  const fiwareService = firstNonEmpty(
+    serviceInfo.service,
+    serviceInfo.fiwareService,
+    entry.service,
+    entry.fiwareService,
+    storedServiceKey ? storedServiceKey.split('|')[3] : '',
+    FIWARE_SERVICE
+  );
+  const subservice = firstNonEmpty(
+    serviceInfo.subservice,
+    serviceInfo.servicePath,
+    entry.subservice,
+    entry.servicePath,
+    FIWARE_SERVICEPATH,
+    '/'
+  );
+  const entityType =
+    firstNonEmpty(serviceInfo.entity_type, serviceInfo.entityType, entry.entity_type, entry.entityType) ||
+    ENTITY_TYPE;
+  const assetId =
+    entry.asset_id ||
+    entry.assetId ||
+    entry.assetID ||
+    staticMap.get('asset_id') ||
+    staticMap.get('assetId') ||
+    staticMap.get('assetID') ||
+    '';
+  const computedServiceKey = createServiceKey({
+    apikey,
+    resource,
+    cbroker,
+    fiwareService,
+    subservice,
+    entityType
+  });
+  const resolvedServiceKey = storedServiceKey || computedServiceKey;
   return {
     deviceId: entry.device_id || '',
     entityName: entry.entity_name || '',
@@ -1288,13 +1509,140 @@ function normalizeDevice(entry = {}) {
     cbroker,
     fiwareService,
     subservice,
-    serviceKey: createServiceKey({ apikey, resource, cbroker, fiwareService, subservice, entityType }),
+    serviceKey: resolvedServiceKey,
     friendlyName: staticMap.get('friendlyName') || '',
     model: staticMap.get('model') || '',
+    assetId,
     notes: staticMap.get('notes') || '',
     status: staticMap.get('operationalStatus') || '',
     raw: entry
   };
+}
+
+function mergeDuplicateDevices(devices = []) {
+  const deduped = new Map();
+  let fallbackIndex = 0;
+
+  devices.forEach((device) => {
+    if (!device || typeof device !== 'object') return;
+    const deviceId = asNonEmptyString(device.deviceId);
+    const entityName = asNonEmptyString(device.entityName);
+    const serviceKey = asNonEmptyString(device.serviceKey);
+    const dedupeKey =
+      deviceId || entityName
+        ? [deviceId, entityName, serviceKey].join('|')
+        : `__device_${fallbackIndex++}`;
+
+    if (!deduped.has(dedupeKey)) {
+      deduped.set(dedupeKey, {
+        ...device,
+        attributes: Array.isArray(device.attributes) ? [...device.attributes] : [],
+        staticAttributes: Array.isArray(device.staticAttributes)
+          ? [...device.staticAttributes]
+          : []
+      });
+      return;
+    }
+
+    const existing = deduped.get(dedupeKey);
+    existing.attributes = mergeAttributeList(existing.attributes, device.attributes);
+    existing.staticAttributes = mergeAttributeList(existing.staticAttributes, device.staticAttributes);
+
+    existing.apikey = asNonEmptyString(existing.apikey) || asNonEmptyString(device.apikey) || '';
+
+    const nextResource = asNonEmptyString(device.resource);
+    const currentResource = asNonEmptyString(existing.resource);
+    if (nextResource && (!currentResource || isDefaultResourceValue(currentResource))) {
+      existing.resource = nextResource;
+    }
+
+    const nextCbroker = asNonEmptyString(device.cbroker);
+    if (nextCbroker && !asNonEmptyString(existing.cbroker)) {
+      existing.cbroker = nextCbroker;
+    }
+
+    const nextFiwareService = asNonEmptyString(device.fiwareService);
+    if (
+      nextFiwareService &&
+      (!asNonEmptyString(existing.fiwareService) || existing.fiwareService === FIWARE_SERVICE)
+    ) {
+      existing.fiwareService = nextFiwareService;
+    }
+
+    const nextSubservice = asNonEmptyString(device.subservice);
+    if (nextSubservice && (!asNonEmptyString(existing.subservice) || existing.subservice === '/')) {
+      existing.subservice = nextSubservice;
+    }
+
+    if (serviceKeyScore(device.serviceKey) > serviceKeyScore(existing.serviceKey)) {
+      existing.serviceKey = device.serviceKey;
+    }
+
+    if (asNonEmptyString(device.friendlyName) && !asNonEmptyString(existing.friendlyName)) {
+      existing.friendlyName = device.friendlyName;
+    }
+    if (asNonEmptyString(device.model) && !asNonEmptyString(existing.model)) {
+      existing.model = device.model;
+    }
+    if (asNonEmptyString(device.assetId) && !asNonEmptyString(existing.assetId)) {
+      existing.assetId = device.assetId;
+    }
+    if (asNonEmptyString(device.notes) && !asNonEmptyString(existing.notes)) {
+      existing.notes = device.notes;
+    }
+    if (asNonEmptyString(device.status) && !asNonEmptyString(existing.status)) {
+      existing.status = device.status;
+    }
+    existing.raw = existing.raw || device.raw;
+  });
+
+  return Array.from(deduped.values());
+}
+
+function mergeAttributeList(target = [], source = []) {
+  const base = Array.isArray(target) ? [...target] : [];
+  const seen = new Set(base.map(attributeIdentity));
+
+  (Array.isArray(source) ? source : []).forEach((attr) => {
+    const key = attributeIdentity(attr);
+    if (!seen.has(key)) {
+      base.push(attr);
+      seen.add(key);
+    }
+  });
+
+  return base;
+}
+
+function attributeIdentity(attr = {}) {
+  const objectId = asNonEmptyString(attr.object_id || attr.objectId);
+  const name = asNonEmptyString(attr.name);
+  if (objectId || name) {
+    return `${objectId}::${name}`;
+  }
+  const type = asNonEmptyString(attr.type);
+  const value = attr.value != null ? JSON.stringify(attr.value) : '';
+  return `anon::${type}::${value}`;
+}
+
+function isDefaultResourceValue(value) {
+  const normalized = asNonEmptyString(value);
+  if (!normalized) return true;
+  return normalizeResourcePath(normalized) === '/';
+}
+
+function serviceKeyScore(value) {
+  const normalized = asNonEmptyString(value);
+  if (!normalized) return 0;
+  const parts = normalized.split('|');
+  let score = 0;
+  if (asNonEmptyString(parts[0])) score += 4;
+  if (asNonEmptyString(parts[1])) score += 4;
+  if (asNonEmptyString(parts[2])) score += 1;
+  if (asNonEmptyString(parts[3])) score += 1;
+  if (asNonEmptyString(parts[4])) score += 1;
+  if (asNonEmptyString(parts[5])) score += 1;
+  return score;
 }
 
 /**L
@@ -1375,7 +1723,149 @@ function toAttributeMap(list) {
  * Return a clean label for a service group.
  */
 function getServiceLabel(group) {
-  return group.displayName || group.apikey || group.resource || 'Service';
+  if (!group || typeof group !== 'object') return 'Service';
+  const displayName = asNonEmptyString(group.displayName);
+  if (displayName) return displayName;
+  const resource = asNonEmptyString(group.resource);
+  if (resource) return resource;
+  const apikey = asNonEmptyString(group.apikey);
+  if (apikey) return apikey;
+  return 'Service';
+}
+
+function findServiceGroupForMachine(machine = {}) {
+  if (!serviceGroups.length) return null;
+  const candidates = collectMachineServiceCandidates(machine);
+  for (const candidate of candidates) {
+    const match = serviceGroups.find((group) => serviceGroupMatchesCandidate(group, candidate));
+    if (match) return match;
+  }
+  return null;
+}
+
+function collectMachineServiceCandidates(machine = {}) {
+  const seen = new Map();
+
+  const registerCandidate = (candidate = {}) => {
+    const apikey = asNonEmptyString(candidate.apikey ?? candidate.apiKey ?? candidate.api_key);
+    const resource = cleanResourceCandidate(candidate.resource ?? candidate.resource_path ?? candidate.resourcePath);
+    const fiwareService = asNonEmptyString(candidate.fiwareService ?? candidate.service);
+    const subservice = cleanSubserviceCandidate(candidate.subservice ?? candidate.servicePath);
+    const entityType = asNonEmptyString(candidate.entityType ?? candidate.entity_type ?? candidate.type);
+
+    if (!apikey && !resource && !fiwareService && subservice === undefined && !entityType) {
+      return;
+    }
+
+    const key = [apikey || '', resource || '', fiwareService || '', subservice ?? '', entityType || ''].join('|');
+    if (!seen.has(key)) {
+      seen.set(key, { apikey, resource, fiwareService, subservice, entityType });
+    }
+  };
+
+  registerCandidate(machine);
+
+  if (machine.raw && typeof machine.raw === 'object') {
+    registerCandidate(machine.raw);
+    if (machine.raw.service && typeof machine.raw.service === 'object') {
+      registerCandidate(machine.raw.service);
+    }
+  }
+
+  if (typeof machine.serviceKey === 'string' && machine.serviceKey) {
+    const keyCandidate = candidateFromServiceKey(machine.serviceKey);
+    if (keyCandidate) registerCandidate(keyCandidate);
+  }
+
+  const staticMap = Array.isArray(machine.staticAttributes)
+    ? toAttributeMap(machine.staticAttributes)
+    : new Map();
+  if (staticMap.size) {
+    registerCandidate({
+      apikey: staticMap.get('serviceGroupApikey'),
+      resource: staticMap.get('serviceGroupResource'),
+      subservice: staticMap.get('serviceGroupSubservice'),
+      fiwareService: staticMap.get('serviceGroupFiware'),
+      entityType: staticMap.get('serviceGroupEntityType')
+    });
+    const staticKey = asNonEmptyString(staticMap.get('serviceGroupKey'));
+    if (staticKey) {
+      const parsed = candidateFromServiceKey(staticKey);
+      if (parsed) registerCandidate(parsed);
+    }
+  }
+
+  const candidates = Array.from(seen.values()).sort(
+    (a, b) => scoreServiceCandidate(b) - scoreServiceCandidate(a)
+  );
+  return candidates;
+}
+
+function candidateFromServiceKey(serviceKey) {
+  if (!serviceKey) return null;
+  const parts = String(serviceKey).split('|');
+  if (!parts.length) return null;
+  return {
+    apikey: parts[0],
+    resource: parts[1],
+    fiwareService: parts[3],
+    subservice: parts[4],
+    entityType: parts[5]
+  };
+}
+
+function scoreServiceCandidate(candidate = {}) {
+  let score = 0;
+  if (asNonEmptyString(candidate.apikey)) score += 4;
+  if (asNonEmptyString(candidate.resource)) score += 4;
+  if (asNonEmptyString(candidate.fiwareService)) score += 1;
+  if (candidate.subservice !== undefined && candidate.subservice !== null) score += 1;
+  if (asNonEmptyString(candidate.entityType)) score += 1;
+  return score;
+}
+
+function serviceGroupMatchesCandidate(group, candidate) {
+  if (!group || !candidate) return false;
+  if (candidate.apikey && asNonEmptyString(group.apikey) !== candidate.apikey) return false;
+  if (candidate.resource) {
+    const groupResource = cleanResourceCandidate(group.resource);
+    if (groupResource !== candidate.resource) return false;
+  }
+  if (candidate.fiwareService && asNonEmptyString(group.fiwareService) !== candidate.fiwareService) {
+    return false;
+  }
+  if (candidate.subservice !== undefined) {
+    const groupSubservice = cleanSubserviceCandidate(group.subservice);
+    if (groupSubservice !== candidate.subservice) return false;
+  }
+  if (candidate.entityType && asNonEmptyString(group.entityType) !== candidate.entityType) {
+    return false;
+  }
+  return true;
+}
+
+function cleanResourceCandidate(value) {
+  const str = asNonEmptyString(value);
+  if (!str) return undefined;
+  return normalizeResourcePath(str);
+}
+
+function cleanSubserviceCandidate(value) {
+  const str = asNonEmptyString(value);
+  if (str == null) return undefined;
+  if (!str) return undefined;
+  return normalizeResourcePath(str) || '/';
+}
+
+function getMachineServiceFallback(machine = {}) {
+  const candidates = collectMachineServiceCandidates(machine);
+  if (candidates.length) {
+    const best = candidates[0];
+    if (best.resource) return best.resource;
+    if (best.apikey) return best.apikey;
+    if (best.fiwareService) return `${best.fiwareService}${best.subservice ? ` ${best.subservice}` : ''}`;
+  }
+  return 'N/A';
 }
 
 /**
@@ -1402,7 +1892,7 @@ function renderServiceGroupError(err) {
 function setMachinesLoading() {
   if (!machinesTableBody) return;
   machinesTableBody.innerHTML =
-    "<tr><td colspan='5' class='px-5 py-4 text-center'><i class='fas fa-spinner loading-spinner text-indigo-600'></i></td></tr>";
+    "<tr><td colspan='6' class='px-5 py-4 text-center'><i class='fas fa-spinner loading-spinner text-indigo-600'></i></td></tr>";
 }
 
 /**
@@ -1411,7 +1901,7 @@ function setMachinesLoading() {
 function renderMachinesError(err) {
   if (!machinesTableBody) return;
   const message = escapeHtml(err.message || 'Unknown error');
-  machinesTableBody.innerHTML = `<tr><td colspan='5' class='px-5 py-4 text-center text-sm text-red-500'>${message}</td></tr>`;
+  machinesTableBody.innerHTML = `<tr><td colspan='6' class='px-5 py-4 text-center text-sm text-red-500'>${message}</td></tr>`;
 }
 
 /**

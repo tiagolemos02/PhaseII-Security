@@ -5,7 +5,7 @@
  */
 
 // Import all necessary modules
-import { clearSession } from './config.js';
+import { restoreSessionFromStorage } from './config.js';
 import { initTwinViewer }  from './digital-twin.js';
 import {
     emailInput, passwordInput, btnLogin, userInfoBtn, userDropdown, btnLogout, 
@@ -16,7 +16,7 @@ import {
 import { 
     showDropdown, resetApp, switchTab, togglePasswordVisibility 
 } from './ui-helpers.js';
-import { handleLogin, handleLoginKeyPress } from './auth.js';
+import { handleLogin, handleLoginKeyPress, resumeStoredSession } from './auth.js';
 import { refreshUsersList, handleCreateUser } from './users.js';
 import { refreshLogsList, applyLogsFilter, clearLogsFilter } from './orion-logs.js';
 import { initInventory } from './inventory.js';
@@ -24,7 +24,8 @@ import { initInventory } from './inventory.js';
 /**
  * Initialize the application when DOM is fully loaded
  */
-function initializeApp() {
+async function initializeApp() {
+    const restoredState = restoreSessionFromStorage();
     setupTabNavigation();
     setupPasswordToggleHandlers();
     setupUserMenuHandlers();
@@ -40,8 +41,9 @@ function initializeApp() {
     initTwinViewer(); 
     initInventory();
 
-    // Clear any existing session on page load
-    clearSession();
+    if (restoredState.sessionToken) {
+        await resumeStoredSession(restoredState);
+    }
 
     console.log("Digital Twin Security Portal initialized successfully");
 }

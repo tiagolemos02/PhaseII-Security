@@ -92,6 +92,12 @@ export function updateActivityFromDevices(
     }
   });
 
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('device-activity-updated', { detail: { timestamp: now } })
+    );
+  }
+
   return byEntity;
 }
 

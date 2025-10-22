@@ -255,17 +255,15 @@ export function renderLogs(data) {
  * @param {number} idx - Device index
  * @returns {HTMLElement} Device row element
  */
- function createDeviceRow(device) {
-     const devRow = document.createElement("tr");
-     devRow.classList.add("device-row", "bg-indigo-50");
-     devRow.style.cursor = "pointer"; 
-    const offlineBadge = device.offline
-        ? `<span class="inline-flex items-center mr-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold uppercase tracking-wide">Offline</span>`
-        : "";
-     devRow.innerHTML = `
-         <td colspan="5" class="px-6 py-4 font-medium text-sm">
-            <i id="arrow-${safeId(device.id)}" class="fas fa-chevron-right arrow-icon mr-2"></i>${offlineBadge}<span>${device.id}</span>
-         </td>`;
+function createDeviceRow(device) {
+    const devRow = document.createElement("tr");
+    devRow.classList.add("device-row", "bg-indigo-50");
+    devRow.style.cursor = "pointer"; 
+    const statusBadge = renderDeviceStatusBadge(device.status);
+    devRow.innerHTML = `
+        <td colspan="5" class="px-6 py-4 font-medium text-sm">
+            <i id="arrow-${safeId(device.id)}" class="fas fa-chevron-right arrow-icon mr-2"></i>${statusBadge}<span>${device.id}</span>
+        </td>`;
 
     // Add click handler for expand/collapse
     devRow.onclick = () => toggleDeviceAttributes(device.id);
@@ -290,6 +288,17 @@ function createAttributeRow(attr, deviceId) {
         <td class='px-6 py-4 text-sm'>${attr.latency}</td>`;
 
     return attrRow;
+}
+
+function renderDeviceStatusBadge(status) {
+    const label = typeof status === "string" ? status.trim().toLowerCase() : "";
+    if (label === "offline") {
+        return `<span class="inline-flex items-center mr-2 px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-xs font-semibold uppercase tracking-wide">Offline</span>`;
+    }
+    if (label === "online") {
+        return `<span class="inline-flex items-center mr-2 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold uppercase tracking-wide">Online</span>`;
+    }
+    return "";
 }
 
 /**

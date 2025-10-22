@@ -33,21 +33,94 @@ export let currentUserEmail = "";
 // NEW: keystone admin token (X-Subject_Token)
 export let keystoneToken = "";
 
+const STORAGE_KEYS = {
+    sessionToken: "dtp.sessionToken",
+    userEmail: "dtp.userEmail",
+    keystoneToken: "dtp.keystoneToken"
+};
+
+const storageRef = (() => {
+    if (typeof window === "undefined") return null;
+    try {
+        return window.localStorage;
+    } catch (_err) {
+        return null;
+    }
+})();
+
+function storageAvailable() {
+    return Boolean(storageRef);
+}
+
+function persistValue(key, value) {
+    if (!storageAvailable()) return;
+    try {
+        if (value !== undefined && value !== null && String(value).length) {
+            storageRef.setItem(key, String(value));
+        } else {
+            storageRef.removeItem(key);
+        }
+    } catch (err) {
+        console.warn("Unable to persist session data:", err);
+    }
+}
+
+function readValue(key) {
+    if (!storageAvailable()) return "";
+    try {
+        return storageRef.getItem(key) || "";
+    } catch (err) {
+        console.warn("Unable to read session data:", err);
+        return "";
+    }
+}
+
 // State setters (to maintain encapsulation)
 export function setSessionToken(token) {
-    sessionToken = token;
+    sessionToken = token ? String(token) : "";
+    persistValue(STORAGE_KEYS.sessionToken, sessionToken);
 }
 
 export function setCurrentUserEmail(email) {
-    currentUserEmail = email;
+    currentUserEmail = email ? String(email) : "";
+    persistValue(STORAGE_KEYS.userEmail, currentUserEmail);
 }
 
 export function setKeystoneToken(token) {
-    keystoneToken = token || "";
+    keystoneToken = token ? String(token) : "";
+    persistValue(STORAGE_KEYS.keystoneToken, keystoneToken);
 }
 
 export function clearSession() {
     sessionToken = "";
     currentUserEmail = "";
     keystoneToken = "";
+    if (!storageAvailable()) return;
+    try {
+        storageRef.removeItem(STORAGE_KEYS.sessionToken);
+        storageRef.removeItem(STORAGE_KEYS.userEmail);
+        storageRef.removeItem(STORAGE_KEYS.keystoneToken);
+    } catch (err) {
+        console.warn("Unable to clear persisted session data:", err);
+    }
+}
+
+export function restoreSessionFromStorage() {
+    if (!storageAvailable()) {
+        return { sessionToken, currentUserEmail, keystoneToken };
+    }
+
+    const storedToken = readValue(STORAGE_KEYS.sessionToken);
+    const storedEmail = readValue(STORAGE_KEYS.userEmail);
+    const storedKeystone = readValue(STORAGE_KEYS.keystoneToken);
+
+    setSessionToken(storedToken);
+    setCurrentUserEmail(storedEmail);
+    setKeystoneToken(storedKeystone);
+
+    return {
+        sessionToken,
+        currentUserEmail,
+        keystoneToken
+    };
 }
