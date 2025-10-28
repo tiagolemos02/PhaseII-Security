@@ -16,8 +16,8 @@ export const IOT_AGENT_TRANSPORT = "MQTT";
 export const IOT_AGENT_PROTOCOL = "IoTA-JSON";
 
 // OAuth2 client from Keyrock → OAuth2 Credentials
-export const KEYROCK_CLIENT_ID = "43507ed7-6eb9-4d85-820a-28fe8b8451f9";
-export const KEYROCK_CLIENT_SECRET = "8a1b818a-3e8e-4e85-8ae8-636eaa0b5808";
+export const KEYROCK_CLIENT_ID = "YOUR_KEYROCK_CLIENT_ID";
+export const KEYROCK_CLIENT_SECRET = "YOUR_KEYROCK_CLIENT_SECRET";
 
 // FIWARE Service Configuration
 export const FIWARE_SERVICE = "openiot"; // change if needed
