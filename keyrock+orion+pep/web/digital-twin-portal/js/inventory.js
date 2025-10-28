@@ -1656,12 +1656,8 @@ function buildHeaders({ includeJson = false } = {}) {
   };
 
   if (includeJson) { headers['Content-Type'] = 'application/json'; }
-  /*if (keystoneToken) {
-    headers['X-Auth-Token'] = keystoneToken;
-  }*/
   if (sessionToken) {
     headers['X-Auth-Token'] = sessionToken;
-    //headers.Authorization = `Bearer ${sessionToken}`;
   }
   return headers;
 }

@@ -59,21 +59,6 @@ export async function listLogs() {
             `${ORION_BASE}/v2/entities?type=${ENTITY_TYPE}&options=keyValues`,
             { method: "GET", headers }
         );
-        /*const resp = await fetch(
-            `${ORION_BASE}/v2/entities?type=${ENTITY_TYPE}&options=keyValues`,
-            {
-                method: "GET",
-                headers: {
-                    Accept: "application/json",
-                    "Fiware-Service": FIWARE_SERVICE,
-                    "Fiware-ServicePath": FIWARE_SERVICEPATH,
-                    ...(sessionToken && { 
-                        "X-Auth-Token": sessionToken,
-                        "Authorization": `Bearer ${sessionToken}`
-                     }),
-                },
-            }
-        );*/
 
         const rtt = Math.round(performance.now() - t0); // Network RTT in ms
 

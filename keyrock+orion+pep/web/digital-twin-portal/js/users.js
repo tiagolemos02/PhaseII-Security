@@ -19,13 +19,6 @@ export async function listUsers() {
     usersTableBody.innerHTML =
         "<tr><td colspan='5' class='px-6 py-4 text-center'><i class='fas fa-spinner loading-spinner text-indigo-600'></i></td></tr>";
 
-   /* if (!sessionToken) {
-        usersMessage.textContent = "Please login first.";
-        usersTableBody.innerHTML =
-            "<tr><td colspan='5' class='px-6 py-4 text-center text-sm text-gray-500'>Please sign in to view users</td></tr>";
-        return;
-    }*/
-
     if (!keystoneToken || !keystoneToken.trim()) {
     usersMessage.textContent = "Admin session not available. Please re-login with an admin user.";
     usersTableBody.innerHTML = "<tr><td colspan='5' class='px-6 py-4 text-center text-sm text-gray-500'>Admin token missing</td></tr>";
@@ -39,7 +32,6 @@ export async function listUsers() {
             headers: {
                 Accept: "application/json",
                 "X-Auth-Token": keystoneToken,
-                //"Authorization": `Bearer ${sessionToken}`,
             },
         });
 
@@ -106,11 +98,6 @@ export async function handleCreateUser() {
     createMsg.textContent = "";
     createMsg.className = "mt-3 text-sm text-red-600"; // Reset to error styling
 
-    /*if (!sessionToken) {
-        createMsg.textContent = "Please login first.";
-        return;
-    }*/
-
      if (!keystoneToken || !keystoneToken.trim()) {
     createMsg.textContent = "Admin session not available.";
     return;
@@ -137,7 +124,6 @@ export async function handleCreateUser() {
             headers: {
                 "Content-Type": "application/json",
                 "X-Auth-Token": keystoneToken,
-                //"Authorization": `Bearer ${sessionToken}`,
             },
             body: JSON.stringify({ user: userData }),
         });
