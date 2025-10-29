@@ -1,6 +1,13 @@
 # Phase II - Security
 **This phase brings significant improvements over the previous one.
 Please pay attention to the other folders for instructions and explanations of files that have not been changed, as this information has not been transferred here.**
+
+## Identificação do Projeto
+
+**Repositório**: `tiagolemos02/PhaseII-Security/keyrock+orion+pep`  
+**Versão**: `v3.0.0`  
+**Autor**: Tiago Lemos  
+**Licença**: MIT
 ## Docker Setup
 
 - The deployment adds **Wilma PEP Proxy** as an API gateway positioned in front of Orion Context Broker, serving as a **Policy Enforcement Point (PEP)**.
@@ -23,7 +30,7 @@ Please pay attention to the other folders for instructions and explanations of f
 - The UI and API clients must also provide multi-tenancy headers: `Fiware-Service` and `Fiware-ServicePath` to scope requests to the desired tenant database.
 - This separation of concerns preserves secure northbound access with OAuth2 enforcement, while enabling direct internal component communication.
 
-IMAGE
+<img width="1703" height="802" alt="github" src="https://github.com/user-attachments/assets/db6d9d7c-5646-4478-8342-7d74ab37d3f7" />
 
 ## Web App
 
@@ -108,16 +115,16 @@ docker restart fiware-keyrock
 
 - Access Keyrock at [http://localhost:3005](http://localhost:3005) and log in using the admin credentials: `admin@test.com / fiware`.
 - Register a new application using your web app URL, typically: `http://localhost:8000/`.
-- IMAGE 1
-- IMAGE 2
+- <img width="978" height="637" alt="1" src="https://github.com/user-attachments/assets/ef10589d-8153-436a-8b37-f6658f2ab6d1" />
+- <img width="823" height="738" alt="2" src="https://github.com/user-attachments/assets/9f621818-c19d-4c6e-8463-ab7118c535a4" />
 - Set an image for the application (optional).
 
 #### Create Application Roles and Permissions
 
 - Go to the application’s "Roles" section and click "+" to create a role. Name it as you prefer.
-- IMAGE 3
+- <img width="831" height="525" alt="3" src="https://github.com/user-attachments/assets/c75dbb3b-033c-4c04-a0b7-44ba258f82f2" />
 - With the role selected, add the following permissions (select "Is a regular expression?" where noted):
-- IMAGE 4
+- <img width="836" height="506" alt="4" src="https://github.com/user-attachments/assets/1c3fa38f-c31d-4d04-8ec5-b95c40391c34" />
 
 | Permission name                           | Description                                                                      | HTTP Action | Resource                                           | Regex?          |
 |-------------------------------------------|----------------------------------------------------------------------------------|-------------|----------------------------------------------------|-----------------|
@@ -129,14 +136,14 @@ docker restart fiware-keyrock
 | IoT Devices — List                        | Listing devices the IoT Agent has registered                                     | GET         | /iot/devices                                       | Yes             |
 | IoT Devices — Delete (by id)              | Deleting a single device by device_id on the IoT Agent                           | DELETE      | ^/iot/devices/[^/]+/?(\?.*)?$                      | Yes             |
 
-- IMAGE 5
+- <img width="810" height="752" alt="5" src="https://github.com/user-attachments/assets/efb702a0-f4cd-4e9b-850a-e3551d40025b" />
 ***
 
 
 ### 4. Register the PEP Proxy and Set Environment Variables
 
 - Register a new PEP Proxy in Keyrock; copy the Application Id, Pep Proxy Username, and Pep Proxy Password.
-- IMAGE 6
+- <img width="859" height="394" alt="6" src="https://github.com/user-attachments/assets/53e2e4fd-8f7d-4946-aacf-9d3409db42e2" />
 - Add these values to your `.env` file:
 
 ```env
@@ -158,10 +165,10 @@ export const KEYROCK_CLIENT_SECRET = "";
 ### 5. Assign Permissions to Users and Roles
 
 - Assign the created permissions to the desired role.
-- IMAGE 7
+- <img width="850" height="593" alt="7" src="https://github.com/user-attachments/assets/7b361b4e-43c3-4222-9de3-f98eca18032a" />
 - Set the role for the `admin` user.
 - Use Keyrock’s UI: assign the role and permissions visually as shown in the referenced image.
-- IMAGE 8
+- <img width="601" height="400" alt="8" src="https://github.com/user-attachments/assets/18be747c-37fa-4c51-be12-ea8170d36ab3" />
 
 ***
 
