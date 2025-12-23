@@ -2,12 +2,12 @@
 **This phase brings significant improvements over the previous one.
 Please pay attention to the other folders for instructions and explanations of files that have not been changed, as this information has not been transferred here.**
 
-## Identificação do Projeto
+## Project Identification
 
-**Repositório**: `tiagolemos02/PhaseII-Security/keyrock+orion+pep_v1`  
-**Versão**: `v3.0.0`  
-**Autor**: Tiago Lemos  
-**Licença**: MIT
+**Repository**: `tiagolemos02/PhaseII-Security/keyrock+orion+pep_v1`  
+**Version**: `v3.0.0`  
+**Author**: Tiago Lemos  
+**License**: MIT
 ## Docker Setup
 
 - The deployment adds **Wilma PEP Proxy** as an API gateway positioned in front of Orion Context Broker, serving as a **Policy Enforcement Point (PEP)**.
