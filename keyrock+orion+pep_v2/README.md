@@ -96,8 +96,7 @@ The image used is now a **custom Keyrock image**, with **CORS** rules already co
 
 - With the changes, the architecture now looks like the following image:
 
-IMAGE
-
+<img width="1593" height="564" alt="Untitled Diagram" src="https://github.com/user-attachments/assets/491ef001-55cc-4d90-ba5d-e118bd5b478a" />
 
 ## Web App
 
