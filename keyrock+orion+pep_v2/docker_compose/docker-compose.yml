@@ -1,0 +1,245 @@
+version: "3.9"
+
+#######################
+#  NETWORK & VOLUMES  #
+#######################
+networks:
+  fiware_net:                   # one shared network for everything
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.1.0/24 
+
+volumes:
+  mongo-db:
+  mysql-db:
+
+################
+#    SECRETS   #
+################
+secrets:
+  my_secret_data:
+    file: ./secrets.txt         
+
+################
+#   SERVICES   #
+################
+services:
+
+  #########################################################################
+  # Keyrock + MySQL + PEP Proxy (Wilma) (Identity Management)             #
+  #########################################################################
+  mysql-db:
+    image: mysql:${MYSQL_DB_VERSION}
+    container_name: db-mysql
+    hostname: mysql-db
+    expose:
+      - "${MYSQL_DB_PORT}"
+    ports:
+      - "${MYSQL_DB_PORT}:${MYSQL_DB_PORT}"   
+    environment:
+      - "MYSQL_ROOT_PASSWORD_FILE=/run/secrets/my_secret_data"
+      - "MYSQL_ROOT_HOST=%"
+      - "MYSQL_DATABASE=keyrock"
+      - "MYSQL_USER=keyrock"
+      - "MYSQL_PASSWORD=fiware"
+    volumes:
+      - mysql-db:/var/lib/mysql
+    secrets:
+      - my_secret_data
+    networks:
+      - fiware_net           
+
+  keyrock:
+    image: lemostiago/custom-keyrock:latest
+    container_name: fiware-keyrock
+    hostname: keyrock
+    depends_on:
+      - mysql-db
+    ports:
+      - "${KEYROCK_PORT}:${KEYROCK_PORT}"      
+      - "${KEYROCK_HTTPS_PORT}:${KEYROCK_HTTPS_PORT}"
+    environment:
+      # ── DB ───────────────────────────────────────────────────────────
+      - IDM_DB_HOST=mysql-db
+      - IDM_DB_USER=keyrock
+      - IDM_DB_PASS=fiware
+      - IDM_DB_NAME=keyrock
+      # ── Core settings ────────────────────────────────────────────────
+      - IDM_PORT=${KEYROCK_PORT}
+      - IDM_HOST=http://localhost:${KEYROCK_PORT}
+      - IDM_HTTPS_ENABLED=${IDM_HTTPS_ENABLED}
+      - IDM_HTTPS_PORT=${KEYROCK_HTTPS_PORT}
+      # ── Admin user ───────────────────────────────────────────────────
+      - IDM_ADMIN_USER=admin
+      - IDM_ADMIN_EMAIL=admin@test.com
+      - IDM_ADMIN_PASS=fiware
+      # ── CORS ─────────────────────────────────────────────────────────
+      - CORS_ENABLED=true
+      - CORS_ALLOWED_ORIGINS=http://localhost:8000
+      - CORS_ALLOWED_HEADERS=authorization,content-type,x-auth-token 
+      - CORS_ALLOWED_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS
+      - CORS_EXPOSED_HEADERS=X-Subject-Token,location
+    secrets:
+      - my_secret_data
+    healthcheck:
+      test: curl --fail -s http://keyrock:${KEYROCK_PORT}/version || exit 1
+      interval: 5s
+    networks:
+      - fiware_net
+
+  api-gateway:
+    image: nginx:alpine
+    container_name: fiware-api-gateway
+    hostname: api-gateway
+    depends_on:
+      - orion-v2
+      - iot-agent
+    expose:
+      - "80"
+    volumes:
+      - ./gateway:/etc/nginx/conf.d/:ro
+    networks:
+      - fiware_net
+
+  pep-proxy:
+    image: quay.io/fiware/pep-proxy
+    container_name: pep-proxy
+    hostname: pep-proxy
+    depends_on:
+      - keyrock
+      - api-gateway
+    ports:
+      - "1027:1027" # exposed to host/browser
+    expose:
+      - "1027"
+    environment:
+      # Where to forward requests (your Orion)
+      - PEP_PROXY_APP_HOST=api-gateway
+      - PEP_PROXY_APP_PORT=80
+      - PEP_PROXY_PORT=1027
+
+      # Keyrock connection
+      - PEP_PROXY_IDM_HOST=keyrock
+      - PEP_PROXY_IDM_PORT=${KEYROCK_PORT}
+      - PEP_PROXY_IDM_SSL_ENABLED=false
+
+      # Credentials from Keyrock (Application → PEP Proxy)
+      - PEP_PROXY_APP_ID=${PEP_PROXY_APP_ID}
+      - PEP_PROXY_USERNAME=${PEP_PROXY_USERNAME}
+      - PEP_PROXY_PASSWORD=${PEP_PROXY_PASSWORD}
+
+      # Start with authN only (no RBAC); flip to true when add roles
+      - PEP_PROXY_AUTH_ENABLED=true
+      - PEP_PROXY_PDP=idm
+      - PEP_PROXY_DEBUG=true
+      - PEP_PROXY_LOG_LEVEL=DEBUG
+
+      # Multi-tenant scoping by FIWARE service header (optional, nice to have)
+      #- PEP_PROXY_TENANT_HEADER=Fiware-Service
+
+      # CORS for your local UI
+      - PEP_PROXY_CORS_ORIGIN=http://localhost:8000
+      - PEP_PROXY_CORS_ALLOWED_HEADERS=content-type,authorization,x-auth-token,fiware-service,fiware-servicepath
+    networks:
+      - fiware_net
+
+  #########################################################################
+  # Orion Context Broker + MongoDB                                        #
+  #########################################################################
+  mongo-db:
+    image: mongo:latest
+    container_name: db-mongo
+    hostname: mongo-db
+    expose:
+      - "27017"
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-db:/data
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    networks:
+      - fiware_net
+
+  orion-v2:
+    image: quay.io/fiware/orion:latest
+    container_name: fiware-orion
+    hostname: orion
+    depends_on:
+      - mongo-db
+    expose:
+      - "1026"
+    command: >
+      -dbURI mongodb://mongo-db 
+      -logLevel DEBUG
+      -corsOrigin __ALL
+      -corsMaxAge 600
+    healthcheck:
+      test: curl --fail -s http://orion:1026/version || exit 1
+      interval: 5s
+    networks:
+      - fiware_net
+
+  #########################################################################
+  # IoT Agent (custom build) + Mosquitto                                  #
+  #########################################################################
+  iot-agent:
+    image: lemostiago/custom-iotagent:latest
+    container_name: fiware-custom-agent
+    hostname: iot-agent
+    depends_on:
+      - mongo-db
+      - mosquitto
+    expose:
+      - "4041"
+    environment:
+      # -- Orion connection --
+      - IOTA_CB_HOST=orion-v2
+      - IOTA_CB_PORT=1026
+      - IOTA_NORTH_PORT=4041
+      - IOTA_CB_NGSI_VERSION=v2
+      # -- Mongo registry --
+      - IOTA_REGISTRY_TYPE=mongodb
+      - IOTA_MONGO_HOST=mongo-db
+      - IOTA_MONGO_PORT=27017
+      - IOTA_MONGO_DB=iotagentjson
+      # -- MQTT south-bound --
+      - IOTA_MQTT_HOST=mosquitto
+      - IOTA_MQTT_PORT=1883
+      - IOTA_DEFAULT_TRANSPORT=MQTT
+      # -- Misc --
+      - IOTA_LOG_LEVEL=DEBUG
+      - IOTA_DEFAULT_EXPRESSION_LANGUAGE=jexl
+      - IOTA_TIMESTAMP=true
+      - IOTA_AUTOCAST=true
+      - IOTA_PROVIDER_URL=http://iot-agent:4041
+      - IOTA_DEFAULT_RESOURCE=
+      # -- CORS for browser access --
+      - IOTA_HTTP_CORS_ENABLED=true
+      - IOTA_HTTP_CORS_ALLOWED_ORIGIN=http://localhost:8000
+      - IOTA_HTTP_CORS_ALLOWED_METHODS=GET,POST,OPTIONS
+      - IOTA_HTTP_CORS_ALLOWED_HEADERS=Fiware-Service,Fiware-ServicePath,Authorization,Content-Type
+    healthcheck:
+      test: curl --fail -s http://iot-agent:4041/iot/about || exit 1
+      interval: 5s
+    networks:
+      - fiware_net
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    hostname: mosquitto
+    expose:
+      - "1883"
+      - "9001"
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - fiware_net
