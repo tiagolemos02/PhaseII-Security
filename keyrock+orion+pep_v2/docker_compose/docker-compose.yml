@@ -47,6 +47,11 @@ services:
       - mysql-db:/var/lib/mysql
     secrets:
       - my_secret_data
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
     networks:
       - fiware_net           
 
@@ -55,7 +60,8 @@ services:
     container_name: fiware-keyrock
     hostname: keyrock
     depends_on:
-      - mysql-db
+      mysql-db:
+        condition: service_healthy
     ports:
       - "${KEYROCK_PORT}:${KEYROCK_PORT}"      
       - "${KEYROCK_HTTPS_PORT}:${KEYROCK_HTTPS_PORT}"
