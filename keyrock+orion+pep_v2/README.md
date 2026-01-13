@@ -158,13 +158,13 @@ docker compose up -d
 
 | Permission name                           | Description                                                                      | HTTP Action | Resource                                           | Regex?          |
 |-------------------------------------------|----------------------------------------------------------------------------------|-------------|----------------------------------------------------|-----------------|
-| IoT Services — Delete (by path)           | Deleting a service group on the IoT Agent                                        | DELETE      | ^/iot/services/?(\?.*)?$                           | Yes             |
-| IoT Services — Create                     | Creating a service group (/iot/services) on the IoT Agent                        | POST        | ^/iot/services/?$                                  | Yes             |
-| IoT Devices— Create                       | Registering devices in a service group on the IoT Agent                          | POST        | /iot/devices/                                      | Yes             |
-| IoT Services — List                       | Listing existing service groups on the IoT Agent                                 | GET         | /iot/services                                      | Yes             |
-| Orion Entities — List/Read (keyValues or full) | Reading data from Orion Context Broker                                      | GET         | /v2/entities                                       | Yes             |
-| IoT Devices — List                        | Listing devices the IoT Agent has registered                                     | GET         | /iot/devices                                       | Yes             |
-| IoT Devices — Delete (by id)              | Deleting a single device by device_id on the IoT Agent                           | DELETE      | ^/iot/devices/[^/]+/?(\?.*)?$                      | Yes             |
+| IoT Services — Delete (by path)           | Deleting a service group on the IoT Agent                                        | DELETE      | `^/iot/services/?(\?.*)?$`                           | Yes             |
+| IoT Services — Create                     | Creating a service group (/iot/services) on the IoT Agent                        | POST        | `^/iot/services/?$`                                 | Yes             |
+| IoT Devices— Create                       | Registering devices in a service group on the IoT Agent                          | POST        | `^/iot/devices/?(\?.*)?$`                                      | Yes             |
+| IoT Services — List                       | Listing existing service groups on the IoT Agent                                 | GET         | `/iot/services`                                      | Yes             |
+| Orion Entities — List/Read (keyValues or full) | Reading data from Orion Context Broker                                      | GET         | `/v2/entities`                                       | Yes             |
+| IoT Devices — List                        | Listing devices the IoT Agent has registered                                     | GET         | `/iot/devices`                                       | Yes             |
+| IoT Devices — Delete (by id)              | Deleting a single device by device_id on the IoT Agent                           | DELETE      | `^/iot/devices/[^/]+/?(\?.*)?$`                      | Yes             |
 
 - <img width="810" height="752" alt="5" src="https://github.com/user-attachments/assets/efb702a0-f4cd-4e9b-850a-e3551d40025b" />
 ***
