@@ -4,7 +4,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const PORT = Number(process.env.BFF_PORT || process.env.PORT || 8000);
+const PORT = Number(process.env.BFF_PORT || process.env.PORT || 8001);
 const PUBLIC_BASE_URL = process.env.BFF_PUBLIC_BASE_URL || `http://localhost:${PORT}`;
 const KEYROCK_BROWSER_URL = process.env.BFF_KEYROCK_BROWSER_URL || "http://localhost:3005";
 const KEYROCK_INTERNAL_URL = process.env.BFF_KEYROCK_INTERNAL_URL || "http://keyrock:3005";

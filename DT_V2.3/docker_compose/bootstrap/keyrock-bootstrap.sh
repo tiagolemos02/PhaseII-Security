@@ -12,8 +12,8 @@ VIEWER_PASS="${KEYROCK_VIEWER_PASS:-}"
 
 APP_NAME="${APP_NAME:-MTEXNS Secure API}"
 APP_DESCRIPTION="${APP_DESCRIPTION:-Secured Orion + IoT Agent behind Wilma}"
-APP_URL="${APP_URL:-http://localhost:8000}"
-APP_REDIRECT_URI="${APP_REDIRECT_URI:-http://localhost:8000/auth/callback}"
+APP_URL="${APP_URL:-http://localhost:8001}"
+APP_REDIRECT_URI="${APP_REDIRECT_URI:-http://localhost:8001/auth/callback}"
 APP_GRANT_TYPE="${APP_GRANT_TYPE:-authorization_code}"
 
 ENV_OUT_FILE="${ENV_OUT_FILE:-}"

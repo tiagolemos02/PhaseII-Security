@@ -166,7 +166,7 @@ services:
       - ./.env
       - ./bootstrap/.env.generated
     environment:
-      - BFF_PORT=8000
+      - BFF_PORT=${PORTAL_BFF_PORT}
       - BFF_PUBLIC_BASE_URL=${PORTAL_PUBLIC_BASE_URL}
       - BFF_KEYROCK_BROWSER_URL=${KEYROCK_BROWSER_URL}
       - BFF_KEYROCK_INTERNAL_URL=http://keyrock:${KEYROCK_PORT}
@@ -177,7 +177,7 @@ services:
       - BFF_KEYROCK_ADMIN_PASS=${KEYROCK_ADMIN_PASS:?KEYROCK_ADMIN_PASS must be set}
       - BFF_SESSION_SECRET=${BFF_SESSION_SECRET:?BFF_SESSION_SECRET must be set}
     ports:
-      - "${PORTAL_BFF_PORT}:8000"
+      - "${PORTAL_BFF_PORT}:${PORTAL_BFF_PORT}"
     volumes:
       - ../web/digital-twin-portal:/app/public:ro
     networks:

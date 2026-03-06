@@ -63,7 +63,7 @@ These changes make login/logout behavior predictable and prevent stale sessions 
 
 The portal is now meant to be accessed through the BFF entrypoint:
 
-* **Portal URL:** `http://localhost:8000`
+* **Portal URL:** `http://localhost:8001`
 
 From there:
 
@@ -71,7 +71,7 @@ From there:
 * You are redirected to Keyrock
 * After authentication, you return to the portal already authenticated via the BFF session
 
-This replaces the previous browser-token-style interaction model. The final normalized configuration keeps the portal on port `8000` across env files, templates, compose, and docs. 
+This replaces the previous browser-token-style interaction model. The final normalized configuration keeps the portal on port `8001` across env files, templates, compose, and docs. 
 
 ---
 
@@ -298,7 +298,7 @@ docker compose up -d --build
 
 After that, open the portal at:
 
-`http://localhost:8000`
+`http://localhost:8001`
 
 Open the .env file inside docker_compose folder to see the passwords generated.
 

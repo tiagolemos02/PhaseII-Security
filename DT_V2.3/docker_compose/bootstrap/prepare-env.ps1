@@ -84,6 +84,21 @@ if (Test-Path $envExampleFile) {
             }
         }
     }
+
+    $portalDefaultKeys = @(
+        "PORTAL_BFF_PORT",
+        "PORTAL_PUBLIC_BASE_URL",
+        "PORTAL_ORIGIN",
+        "APP_URL",
+        "APP_REDIRECT_URI"
+    )
+
+    foreach ($key in $portalDefaultKeys) {
+        $templateValue = Get-EnvValue -Path $envExampleFile -Key $key
+        if (-not [string]::IsNullOrWhiteSpace($templateValue)) {
+            Set-EnvValue -Path $envFile -Key $key -Value $templateValue
+        }
+    }
 }
 
 $secretKeys = @(
