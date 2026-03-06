@@ -284,10 +284,16 @@ This confirms that both role restrictions and time-based ABAC rules are working 
 
 ## First-time setup
 
-Open **PowerShell** in `docker_compose` and run:
+For Windows users, open **PowerShell** in `docker_compose` and run:
 
 ```powershell
 ./bootstrap/prepare-env.ps1
+```
+
+For Linux users run:
+
+```terminal
+pwsh-lts -File ./prepare-env.ps1
 ```
 
 Then start the stack:
