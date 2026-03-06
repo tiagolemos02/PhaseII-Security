@@ -153,4 +153,4 @@ if (Test-Path $runtimeConfigTemplateFile) {
 }
 
 Write-Host "Prepared local environment files."
-Write-Host "Next step: cd docker_compose; docker compose up -d"
+Write-Host "Next step: cd docker_compose; docker compose up -d --build"
