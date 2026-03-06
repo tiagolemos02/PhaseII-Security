@@ -164,7 +164,6 @@ services:
         condition: service_started
     env_file:
       - ./.env
-      - ./bootstrap/.env.generated
     environment:
       - BFF_PORT=${PORTAL_BFF_PORT}
       - BFF_PUBLIC_BASE_URL=${PORTAL_PUBLIC_BASE_URL}
@@ -178,8 +177,11 @@ services:
       - BFF_SESSION_SECRET=${BFF_SESSION_SECRET:?BFF_SESSION_SECRET must be set}
     ports:
       - "${PORTAL_BFF_PORT}:${PORTAL_BFF_PORT}"
+    entrypoint: ["/bin/sh", "/opt/bootstrap/portal-bff-entrypoint.sh"]
     volumes:
       - ../web/digital-twin-portal:/app/public:ro
+      - ./bootstrap/.env.generated:/work/.env.generated:ro
+      - ./bootstrap/portal-bff-entrypoint.sh:/opt/bootstrap/portal-bff-entrypoint.sh:ro
     networks:
       - fiware_net
 
@@ -214,8 +216,9 @@ services:
       - "1027"
     volumes:
       - ./bootstrap/pep-authzforce-custom-policy.js:/opt/fiware-pep-proxy/lib/policies/lisbon_working_hours.js:ro
-    env_file:
-      - ./bootstrap/.env.generated
+      - ./bootstrap/.env.generated:/work/.env.generated:ro
+      - ./bootstrap/pep-proxy-entrypoint.sh:/opt/bootstrap/pep-proxy-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/opt/bootstrap/pep-proxy-entrypoint.sh"]
     environment:
       - PEP_PROXY_APP_HOST=api-gateway
       - PEP_PROXY_APP_PORT=80
