@@ -311,6 +311,10 @@ ensure_permission_for_role "$ADMIN_ROLE_ID" "IoT Devices — Delete (by id)" \
   "Deleting a single device by device_id on the IoT Agent" \
   "DELETE" '^/iot/devices/[^/]+/?(\?.*)?$' true
 
+ensure_permission_for_role "$ADMIN_ROLE_ID" "IoT Devices — Update (by id)" \
+  "Updating a single device by device_id on the IoT Agent" \
+  "PUT" '^/iot/devices/[^/]+/?(\?.*)?$' true
+
 ensure_viewer_orion_working_hours_rule() {
   ROLE_ID="$1"
   PNAME="Orion Logs — Read entities"

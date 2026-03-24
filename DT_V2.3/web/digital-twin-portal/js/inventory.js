@@ -68,6 +68,16 @@ let telemetryAttributeEntries = [];
 let staticAttributeEntries = [];
 let telemetryInputMode = 'manual';
 let staticAttributesInputModeState = 'manual';
+let editTelemetryAttributeEntries = [];
+let editStaticAttributeEntries = [];
+let editTelemetryInputMode = 'manual';
+let editStaticInputMode = 'manual';
+
+const SYSTEM_STATIC_ATTR_NAMES = new Set([
+  'friendlyName', 'model', 'notes', 'operationalStatus',
+  'serviceGroupKey', 'serviceGroupResource', 'serviceGroupApikey',
+  'serviceGroupFiware', 'serviceGroupSubservice'
+]);
 const MANUAL_GRADIENT = ['#1E3A8A', '#4C51BF'];
 const AUTOMATIC_GRADIENT = ['#10B981', '#34D399'];
 
@@ -142,6 +152,7 @@ export function initInventory() {
   applyServiceDefaults();
   initializeAttributeInputs();
   startMachineStatusTicker();
+  initEditModals();
   void loadInventory();
 }
 
@@ -815,6 +826,27 @@ function handleMachinesTableClick(event) {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
+  const viewAttrsBtn = target.closest('[data-action="view-attributes"]');
+  if (viewAttrsBtn instanceof HTMLButtonElement) {
+    const deviceId = viewAttrsBtn.getAttribute('data-device-id');
+    if (!deviceId) return;
+    const machine = machines.find((m) => m.deviceId === deviceId);
+    if (!machine) return;
+    openMachineAttributesModal(machine);
+    return;
+  }
+
+  const editBtn = target.closest('[data-action="edit-machine"]');
+  if (editBtn instanceof HTMLButtonElement) {
+    const deviceId = editBtn.getAttribute('data-device-id');
+    if (!deviceId) return;
+    const machine = machines.find((m) => m.deviceId === deviceId);
+    if (!machine) return;
+    populateEditMachineModal(machine);
+    openModal('editMachineModal');
+    return;
+  }
+
   const deleteBtn = target.closest('[data-action="delete-machine"]');
   if (!deleteBtn) return;
 
@@ -1150,13 +1182,14 @@ function renderMachines() {
           );
         }
 
-        const attributeCount =
-          machine.orionAttributeCount ??
-          ((Array.isArray(machine.attributes) ? machine.attributes.length : 0) +
-            (Array.isArray(machine.staticAttributes) ? machine.staticAttributes.length : 0));
+        const telemetryCount = Array.isArray(machine.attributes) ? machine.attributes.length : 0;
+        const customStaticCount = Array.isArray(machine.staticAttributes)
+          ? machine.staticAttributes.filter((a) => !SYSTEM_STATIC_ATTR_NAMES.has(a.name)).length
+          : 0;
+        const attributeCount = telemetryCount + customStaticCount;
 
         details.push(
-          `<div class="text-xs text-gray-500">Attributes: ${attributeCount}</div>`
+          `<button type="button" class="text-xs text-blue-600 hover:underline mt-1 text-left" data-action="view-attributes" data-device-id="${escapeHtml(machine.deviceId)}">Attributes: ${attributeCount}</button>`
         );
 
         const serviceDetails = [];
@@ -1197,7 +1230,15 @@ function renderMachines() {
           </td>
           <td class="px-5 py-3 text-sm">${renderStatus(machine.currentStatus || machine.status || 'Unknown')}</td>
           <td class="px-5 py-3 text-sm text-gray-700">${details.join('')}</td>
-          <td class="px-5 py-3 text-sm text-right">
+          <td class="px-5 py-3 text-sm text-right whitespace-nowrap">
+            <button
+              type="button"
+              class="inline-flex items-center rounded-md border border-blue-300 px-3 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 mr-2"
+              data-action="edit-machine"
+              data-device-id="${escapeHtml(machine.deviceId)}"
+            >
+              <i class="fas fa-edit mr-1"></i>Edit
+            </button>
             <button
               type="button"
               class="inline-flex items-center rounded-md border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
@@ -2052,4 +2093,595 @@ function formatLastSeen(isoString) {
   const date = new Date(isoString);
   if (Number.isNaN(date.getTime())) return isoString;
   return date.toLocaleString();
+}
+
+// ─── Modal helpers ────────────────────────────────────────────────────────────
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('hidden');
+  el.classList.remove('flex');
+}
+
+// ─── Attributes view modal ────────────────────────────────────────────────────
+
+/**
+ * Render color-coded JSON into a <pre> element using innerHTML.
+ * Telemetry and custom static entries → indigo; system static entries → amber.
+ */
+function renderAttrJson(jsonEl, telemetryAttrs, customStaticAttrs, systemStaticAttrs, showSystem) {
+  function entryHtml(attr, colorClass) {
+    const lines = JSON.stringify(attr, null, 2).split('\n');
+    // indent continuation lines by 4 spaces (array member indentation)
+    const formatted = lines.map((l, i) => (i === 0 ? l : '    ' + l)).join('\n');
+    return `<span class="${colorClass}">${escapeHtml(formatted)}</span>`;
+  }
+
+  const telEntries = telemetryAttrs.map((a) => entryHtml(a, 'text-indigo-600'));
+  const customEntries = customStaticAttrs.map((a) => entryHtml(a, 'text-indigo-600'));
+  const sysEntries = showSystem
+    ? systemStaticAttrs.map((a) => entryHtml(a, 'text-amber-600'))
+    : [];
+  const staticEntries = [...customEntries, ...sysEntries];
+
+  const telSection = telEntries.length
+    ? `[\n    ${telEntries.join(',\n    ')}\n  ]`
+    : '[]';
+  const staticSection = staticEntries.length
+    ? `[\n    ${staticEntries.join(',\n    ')}\n  ]`
+    : '[]';
+
+  jsonEl.innerHTML =
+    `{\n  "attributes": ${telSection},\n  "static_attributes": ${staticSection}\n}`;
+}
+
+function openMachineAttributesModal(machine) {
+  const title = document.getElementById('machineAttributesModalTitle');
+  if (title) {
+    title.textContent = `Attributes — ${machine.friendlyName || machine.deviceId}`;
+  }
+
+  const telemetryAttrs = Array.isArray(machine.attributes) ? machine.attributes : [];
+  const customStaticAttrs = Array.isArray(machine.staticAttributes)
+    ? machine.staticAttributes.filter((a) => !SYSTEM_STATIC_ATTR_NAMES.has(a.name))
+    : [];
+  const systemStaticAttrs = Array.isArray(machine.staticAttributes)
+    ? machine.staticAttributes.filter((a) => SYSTEM_STATIC_ATTR_NAMES.has(a.name))
+    : [];
+  const allStaticAttrs = Array.isArray(machine.staticAttributes) ? machine.staticAttributes : [];
+
+  const visual = document.getElementById('machineAttributesVisual');
+  if (visual) {
+    const telemetryRows = telemetryAttrs.length
+      ? telemetryAttrs
+          .map(
+            (a) => `
+          <tr class="border-b border-gray-100">
+            <td class="py-1.5 pr-3 text-xs font-mono text-gray-500">${escapeHtml(a.object_id || '')}</td>
+            <td class="py-1.5 pr-3 text-xs font-semibold text-indigo-700">${escapeHtml(a.name || '')}</td>
+            <td class="py-1.5 text-xs text-indigo-500">${escapeHtml(a.type || '')}</td>
+          </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="3" class="py-2 text-xs text-gray-400 italic">None</td></tr>`;
+
+    const customStaticRows = customStaticAttrs.length
+      ? customStaticAttrs
+          .map(
+            (a) => `
+          <tr class="border-b border-gray-100">
+            <td class="py-1.5 pr-3 text-xs font-semibold text-indigo-700">${escapeHtml(a.name || '')}</td>
+            <td class="py-1.5 pr-3 text-xs text-indigo-500">${escapeHtml(a.type || '')}</td>
+            <td class="py-1.5 text-xs text-gray-600">${escapeHtml(String(a.value ?? ''))}</td>
+          </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="3" class="py-2 text-xs text-gray-400 italic">None</td></tr>`;
+
+    const systemStaticRows = systemStaticAttrs
+      .map(
+        (a) => `
+        <tr class="border-b border-gray-100 system-attr hidden">
+          <td class="py-1.5 pr-3 text-xs font-semibold text-amber-700">${escapeHtml(a.name || '')}</td>
+          <td class="py-1.5 pr-3 text-xs text-amber-500">${escapeHtml(a.type || '')}</td>
+          <td class="py-1.5 text-xs text-gray-500">${escapeHtml(String(a.value ?? ''))}</td>
+        </tr>`
+      )
+      .join('');
+
+    const hasSystemAttrs = systemStaticAttrs.length > 0;
+
+    visual.innerHTML = `
+      <h3 class="text-sm font-semibold text-gray-700 mb-2">Telemetry Attributes</h3>
+      <table class="w-full mb-6 text-left">
+        <thead>
+          <tr class="text-xs text-gray-500 border-b border-gray-200">
+            <th class="pb-1 pr-3 font-medium">Object ID</th>
+            <th class="pb-1 pr-3 font-medium">Name</th>
+            <th class="pb-1 font-medium">Type</th>
+          </tr>
+        </thead>
+        <tbody>${telemetryRows}</tbody>
+      </table>
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-sm font-semibold text-gray-700">Static Attributes</h3>
+        ${hasSystemAttrs ? `
+        <button type="button" id="toggleSystemAttrsBtn"
+          class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 focus:outline-none"
+          title="Show/hide system-generated attributes">
+          <i class="fas fa-eye-slash text-sm"></i>
+          <span>Show system</span>
+        </button>` : ''}
+      </div>
+      <div class="flex items-center gap-5 mb-3 text-xs text-gray-500">
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0"></span>User-defined
+        </span>
+        ${hasSystemAttrs ? `
+        <span class="flex items-center gap-1.5">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>System-generated
+        </span>` : ''}
+      </div>
+      <table class="w-full text-left">
+        <thead>
+          <tr class="text-xs text-gray-500 border-b border-gray-200">
+            <th class="pb-1 pr-3 font-medium">Name</th>
+            <th class="pb-1 pr-3 font-medium">Type</th>
+            <th class="pb-1 font-medium">Value</th>
+          </tr>
+        </thead>
+        <tbody>${customStaticRows}${systemStaticRows}</tbody>
+      </table>`;
+
+    if (hasSystemAttrs) {
+      const toggleBtn = visual.querySelector('#toggleSystemAttrsBtn');
+      toggleBtn?.addEventListener('click', () => {
+        const systemRows = visual.querySelectorAll('tr.system-attr');
+        const icon = toggleBtn.querySelector('i');
+        const label = toggleBtn.querySelector('span');
+        const isHidden = systemRows.length > 0 && systemRows[0].classList.contains('hidden');
+        systemRows.forEach((row) => row.classList.toggle('hidden', !isHidden));
+        icon?.classList.toggle('fa-eye-slash', !isHidden);
+        icon?.classList.toggle('fa-eye', isHidden);
+        if (label) label.textContent = isHidden ? 'Hide system' : 'Show system';
+
+        const jsonEl = document.getElementById('machineAttributesJson');
+        if (jsonEl) {
+          renderAttrJson(jsonEl, telemetryAttrs, customStaticAttrs, systemStaticAttrs, isHidden);
+        }
+      });
+    }
+  }
+
+  const jsonEl = document.getElementById('machineAttributesJson');
+  if (jsonEl) {
+    renderAttrJson(jsonEl, telemetryAttrs, customStaticAttrs, systemStaticAttrs, false);
+  }
+
+  openModal('machineAttributesModal');
+}
+
+// ─── Edit modal initialisation ────────────────────────────────────────────────
+
+function initEditModals() {
+  // Attributes view modal wiring
+  document.getElementById('machineAttributesModalClose')
+    ?.addEventListener('click', () => closeModal('machineAttributesModal'));
+  const attrsModal = document.getElementById('machineAttributesModal');
+  attrsModal?.addEventListener('click', (e) => {
+    if (e.target === attrsModal) closeModal('machineAttributesModal');
+  });
+
+  // Machine modal wiring
+  document.getElementById('editMachineForm')
+    ?.addEventListener('submit', handleEditMachineSubmit);
+  document.getElementById('editMachineClose')
+    ?.addEventListener('click', () => closeModal('editMachineModal'));
+  document.getElementById('editMachineCancelBtn')
+    ?.addEventListener('click', () => closeModal('editMachineModal'));
+  const machineModal = document.getElementById('editMachineModal');
+  machineModal?.addEventListener('click', (e) => {
+    if (e.target === machineModal) closeModal('editMachineModal');
+  });
+
+  // Telemetry toggle for edit modal
+  const editAttrToggle = document.getElementById('editAttributeModeToggle');
+  const editAttrKnob = editAttrToggle?.querySelector('.mode-knob') || null;
+  setupToggleControl({
+    toggleElement: editAttrToggle,
+    getMode: () => editTelemetryInputMode,
+    setMode: (mode) => {
+      editTelemetryInputMode = mode === 'automatic' ? 'automatic' : 'manual';
+      const isAuto = editTelemetryInputMode === 'automatic';
+      document.getElementById('editAttributeManualContainer')?.classList.toggle('hidden', isAuto);
+      document.getElementById('editAttributeAutomaticContainer')?.classList.toggle('hidden', !isAuto);
+      if (editAttrToggle) {
+        editAttrToggle.dataset.mode = editTelemetryInputMode;
+        editAttrToggle.setAttribute('aria-checked', isAuto ? 'true' : 'false');
+      }
+      applyToggleVisual({ toggle: editAttrToggle, progress: isAuto ? 1 : 0, knob: editAttrKnob });
+      hideMessage(document.getElementById('editMachineMsg'));
+    },
+    preview: (progress) => applyToggleVisual({ toggle: editAttrToggle, progress, knob: editAttrKnob })
+  });
+
+  // Static attributes toggle for edit modal
+  const editStaticToggle = document.getElementById('editStaticAttributesModeToggle');
+  const editStaticKnob = editStaticToggle?.querySelector('.mode-knob') || null;
+  setupToggleControl({
+    toggleElement: editStaticToggle,
+    getMode: () => editStaticInputMode,
+    setMode: (mode) => {
+      editStaticInputMode = mode === 'automatic' ? 'automatic' : 'manual';
+      const isAuto = editStaticInputMode === 'automatic';
+      document.getElementById('editStaticAttributesManualContainer')?.classList.toggle('hidden', isAuto);
+      document.getElementById('editStaticAttributesAutomaticContainer')?.classList.toggle('hidden', !isAuto);
+      if (editStaticToggle) {
+        editStaticToggle.dataset.mode = editStaticInputMode;
+        editStaticToggle.setAttribute('aria-checked', isAuto ? 'true' : 'false');
+      }
+      applyToggleVisual({ toggle: editStaticToggle, progress: isAuto ? 1 : 0, knob: editStaticKnob });
+      hideMessage(document.getElementById('editMachineMsg'));
+    },
+    preview: (progress) => applyToggleVisual({ toggle: editStaticToggle, progress, knob: editStaticKnob })
+  });
+
+  document.getElementById('editAttributeAddBtn')
+    ?.addEventListener('click', handleEditAddTelemetryAttribute);
+  document.getElementById('editStaticAttributeAddBtn')
+    ?.addEventListener('click', handleEditAddStaticAttribute);
+  document.getElementById('editAttributeAutoList')
+    ?.addEventListener('click', handleEditTelemetryAttributeListClick);
+  document.getElementById('editStaticAttributeAutoList')
+    ?.addEventListener('click', handleEditStaticAttributeListClick);
+}
+
+// ─── Populate edit modals ─────────────────────────────────────────────────────
+
+function populateEditMachineModal(machine) {
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val || '';
+  };
+
+  setVal('editMachineOriginalDeviceId', machine.deviceId);
+  setVal('editMachineDeviceId', machine.deviceId);
+  setVal('editMachineName', machine.friendlyName);
+  setVal('editMachineModel', machine.model);
+  setVal('editMachineDescription', machine.notes);
+
+  const statusEl = document.getElementById('editMachineStatus');
+  if (statusEl) statusEl.value = machine.status || 'Online';
+
+  populateEditMachineServiceGroupOptions(machine.serviceKey);
+
+  // Telemetry attributes — start in manual mode with existing JSON
+  editTelemetryAttributeEntries = Array.isArray(machine.attributes)
+    ? machine.attributes.map((a) => ({ ...a }))
+    : [];
+  setVal(
+    'editMachineAttributesManual',
+    editTelemetryAttributeEntries.length
+      ? JSON.stringify(editTelemetryAttributeEntries, null, 2)
+      : ''
+  );
+
+  // Reset telemetry toggle to manual
+  editTelemetryInputMode = 'manual';
+  document.getElementById('editAttributeManualContainer')?.classList.remove('hidden');
+  document.getElementById('editAttributeAutomaticContainer')?.classList.add('hidden');
+  const editAttrToggle = document.getElementById('editAttributeModeToggle');
+  if (editAttrToggle) {
+    editAttrToggle.dataset.mode = 'manual';
+    editAttrToggle.setAttribute('aria-checked', 'false');
+  }
+  applyToggleVisual({
+    toggle: editAttrToggle,
+    progress: 0,
+    knob: editAttrToggle?.querySelector('.mode-knob') || null
+  });
+  renderEditTelemetryAttributeList();
+
+  // Custom static attributes (filter out system-generated ones)
+  const customStatic = Array.isArray(machine.staticAttributes)
+    ? machine.staticAttributes.filter((a) => !SYSTEM_STATIC_ATTR_NAMES.has(a.name))
+    : [];
+  editStaticAttributeEntries = customStatic.map((a) => ({ ...a }));
+  setVal(
+    'editMachineStaticAttributesManual',
+    editStaticAttributeEntries.length
+      ? JSON.stringify(editStaticAttributeEntries, null, 2)
+      : ''
+  );
+
+  // Reset static toggle to manual
+  editStaticInputMode = 'manual';
+  document.getElementById('editStaticAttributesManualContainer')?.classList.remove('hidden');
+  document.getElementById('editStaticAttributesAutomaticContainer')?.classList.add('hidden');
+  const editStaticToggle = document.getElementById('editStaticAttributesModeToggle');
+  if (editStaticToggle) {
+    editStaticToggle.dataset.mode = 'manual';
+    editStaticToggle.setAttribute('aria-checked', 'false');
+  }
+  applyToggleVisual({
+    toggle: editStaticToggle,
+    progress: 0,
+    knob: editStaticToggle?.querySelector('.mode-knob') || null
+  });
+  renderEditStaticAttributeList();
+
+  // Clear add-row input fields
+  ['editAttributeObjectId', 'editAttributeName', 'editAttributeType',
+    'editStaticAttributeName', 'editStaticAttributeType', 'editStaticAttributeValue']
+    .forEach((id) => setVal(id, ''));
+
+  hideMessage(document.getElementById('editMachineMsg'));
+}
+
+function populateEditMachineServiceGroupOptions(currentServiceKey) {
+  const select = document.getElementById('editMachineServiceGroup');
+  if (!select) return;
+  if (!serviceGroups.length) {
+    select.innerHTML = '<option value="">No service groups available</option>';
+    select.disabled = true;
+    return;
+  }
+  const options = [
+    '<option value="">Select a service group</option>',
+    ...serviceGroups
+      .slice()
+      .sort((a, b) => getServiceLabel(a).localeCompare(getServiceLabel(b)))
+      .map(
+        (group) =>
+          `<option value="${escapeHtml(group.key)}"${group.key === currentServiceKey ? ' selected' : ''}>${escapeHtml(getServiceLabel(group))}</option>`
+      )
+  ];
+  select.innerHTML = options.join('');
+  select.disabled = false;
+}
+
+// ─── Edit telemetry attribute list ────────────────────────────────────────────
+
+function handleEditAddTelemetryAttribute(event) {
+  event.preventDefault();
+  const msgEl = document.getElementById('editMachineMsg');
+  hideMessage(msgEl);
+  if (editTelemetryInputMode !== 'automatic') {
+    showMessage(msgEl, 'Toggle to Automatic builder to add telemetry attributes.');
+    return;
+  }
+  const objectId = (document.getElementById('editAttributeObjectId')?.value || '').trim();
+  const name = (document.getElementById('editAttributeName')?.value || '').trim();
+  const type = (document.getElementById('editAttributeType')?.value || '').trim();
+  if (!objectId || !name || !type) {
+    showMessage(msgEl, 'Provide object ID, name, and type for the telemetry attribute.');
+    return;
+  }
+  editTelemetryAttributeEntries.push({ object_id: objectId, name, type });
+  renderEditTelemetryAttributeList();
+  const clearId = (id) => { const el = document.getElementById(id); if (el) el.value = ''; };
+  clearId('editAttributeObjectId');
+  clearId('editAttributeName');
+  clearId('editAttributeType');
+}
+
+function handleEditTelemetryAttributeListClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest('[data-action="remove-edit-telemetry-attribute"]');
+  if (!button) return;
+  event.preventDefault();
+  const index = Number.parseInt(button.getAttribute('data-index') || '', 10);
+  if (Number.isNaN(index)) return;
+  editTelemetryAttributeEntries.splice(index, 1);
+  renderEditTelemetryAttributeList();
+}
+
+function renderEditTelemetryAttributeList() {
+  const list = document.getElementById('editAttributeAutoList');
+  if (!list) return;
+  if (!editTelemetryAttributeEntries.length) {
+    list.innerHTML = '<li class="px-3 py-2 text-xs text-gray-500">No attributes added yet.</li>';
+    return;
+  }
+  list.innerHTML = editTelemetryAttributeEntries
+    .map((attr, index) => {
+      const label = [
+        `<span class="font-semibold text-gray-800">${escapeHtml(attr.name)}</span>`,
+        `<span class="ml-2 text-xs text-gray-500">${escapeHtml(attr.object_id || '')}</span>`,
+        `<span class="ml-2 text-xs text-indigo-600">${escapeHtml(attr.type)}</span>`
+      ].join('');
+      return `<li class="px-3 py-2 flex items-center justify-between">
+        <span class="text-sm text-gray-700">${label}</span>
+        <button type="button" class="text-xs text-red-600 hover:underline"
+          data-action="remove-edit-telemetry-attribute" data-index="${index}">Remove</button>
+      </li>`;
+    })
+    .join('');
+}
+
+// ─── Edit static attribute list ───────────────────────────────────────────────
+
+function handleEditAddStaticAttribute(event) {
+  event.preventDefault();
+  const msgEl = document.getElementById('editMachineMsg');
+  hideMessage(msgEl);
+  if (editStaticInputMode !== 'automatic') {
+    showMessage(msgEl, 'Toggle to Automatic builder to add static attributes.');
+    return;
+  }
+  const name = (document.getElementById('editStaticAttributeName')?.value || '').trim();
+  const type = (document.getElementById('editStaticAttributeType')?.value || '').trim();
+  const value = (document.getElementById('editStaticAttributeValue')?.value || '').trim();
+  if (!name || !type || !value) {
+    showMessage(msgEl, 'Provide name, type, and value for the static attribute.');
+    return;
+  }
+  editStaticAttributeEntries.push({ name, type, value });
+  renderEditStaticAttributeList();
+  const clearId = (id) => { const el = document.getElementById(id); if (el) el.value = ''; };
+  clearId('editStaticAttributeName');
+  clearId('editStaticAttributeType');
+  clearId('editStaticAttributeValue');
+}
+
+function handleEditStaticAttributeListClick(event) {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest('[data-action="remove-edit-static-attribute"]');
+  if (!button) return;
+  event.preventDefault();
+  const index = Number.parseInt(button.getAttribute('data-index') || '', 10);
+  if (Number.isNaN(index)) return;
+  editStaticAttributeEntries.splice(index, 1);
+  renderEditStaticAttributeList();
+}
+
+function renderEditStaticAttributeList() {
+  const list = document.getElementById('editStaticAttributeAutoList');
+  if (!list) return;
+  if (!editStaticAttributeEntries.length) {
+    list.innerHTML = '<li class="px-3 py-2 text-xs text-gray-500">No static attributes added yet.</li>';
+    return;
+  }
+  list.innerHTML = editStaticAttributeEntries
+    .map((attr, index) => {
+      const label = [
+        `<span class="font-semibold text-gray-800">${escapeHtml(attr.name)}</span>`,
+        `<span class="ml-2 text-xs text-indigo-600">${escapeHtml(attr.type)}</span>`,
+        `<span class="ml-2 text-xs text-gray-500">${escapeHtml(String(attr.value ?? ''))}</span>`
+      ].join('');
+      return `<li class="px-3 py-2 flex items-center justify-between">
+        <span class="text-sm text-gray-700">${label}</span>
+        <button type="button" class="text-xs text-red-600 hover:underline"
+          data-action="remove-edit-static-attribute" data-index="${index}">Remove</button>
+      </li>`;
+    })
+    .join('');
+}
+
+// ─── Collect helpers for edit modal ──────────────────────────────────────────
+
+function collectEditTelemetryAttributes() {
+  if (editTelemetryInputMode === 'automatic') {
+    return editTelemetryAttributeEntries.map((e) => ({ ...e }));
+  }
+  const raw = (document.getElementById('editMachineAttributesManual')?.value || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('Attributes JSON must be an array.');
+    return parsed;
+  } catch (error) {
+    showMessage(document.getElementById('editMachineMsg'), `Attributes JSON error: ${error.message}`);
+    return null;
+  }
+}
+
+function collectEditStaticAttributesInput() {
+  if (editStaticInputMode === 'automatic') {
+    return editStaticAttributeEntries.map((e) => ({ ...e }));
+  }
+  const raw = (document.getElementById('editMachineStaticAttributesManual')?.value || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('Static attributes JSON must be an array.');
+    return parsed;
+  } catch (error) {
+    showMessage(document.getElementById('editMachineMsg'), `Static attributes JSON error: ${error.message}`);
+    return null;
+  }
+}
+
+// ─── Edit submit handlers ─────────────────────────────────────────────────────
+
+async function handleEditMachineSubmit(event) {
+  event.preventDefault();
+  const msgEl = document.getElementById('editMachineMsg');
+  hideMessage(msgEl);
+
+  const deviceId = document.getElementById('editMachineOriginalDeviceId')?.value || '';
+  const friendlyName = (document.getElementById('editMachineName')?.value || '').trim();
+  const model = (document.getElementById('editMachineModel')?.value || '').trim();
+  const description = (document.getElementById('editMachineDescription')?.value || '').trim();
+  const status = document.getElementById('editMachineStatus')?.value || '';
+  const selectedServiceKey = document.getElementById('editMachineServiceGroup')?.value || '';
+
+  if (!deviceId) { showMessage(msgEl, 'Device ID is missing.'); return; }
+  if (!friendlyName) { showMessage(msgEl, 'Machine name is required.'); return; }
+  if (!selectedServiceKey) {
+    showMessage(msgEl, 'Select the service group responsible for this machine.');
+    return;
+  }
+
+  const targetService = serviceGroups.find((svc) => svc.key === selectedServiceKey);
+  if (!targetService) {
+    showMessage(msgEl, 'Selected service group is no longer available. Reload and try again.');
+    return;
+  }
+
+  const entityType = targetService?.entityType || 'Thing';
+
+  const attributes = collectEditTelemetryAttributes();
+  if (attributes === null) return;
+
+  const defaultStaticAttributes = buildDefaultStaticAttributes({
+    friendlyName,
+    model,
+    description,
+    status,
+    serviceKey: targetService.key,
+    serviceApikey: targetService.apikey,
+    serviceResource: targetService.resource,
+    serviceFiware: targetService.fiwareService,
+    serviceSubservice: targetService.subservice
+  });
+
+  const customStaticAttributes = collectEditStaticAttributesInput();
+  if (customStaticAttributes === null) return;
+
+  const staticAttributes = [...defaultStaticAttributes, ...customStaticAttributes];
+
+  const payload = {
+    entity_name: buildEntityName(deviceId, entityType),
+    entity_type: entityType,
+    transport: IOT_AGENT_TRANSPORT,
+    protocol: IOT_AGENT_PROTOCOL,
+    attributes,
+    commands: [],
+    static_attributes: staticAttributes
+  };
+
+  const submitBtn = document.getElementById('editMachineForm')?.querySelector('button[type="submit"]');
+  const originalText = submitBtn?.textContent;
+  if (submitBtn) { submitBtn.textContent = 'Saving...'; submitBtn.disabled = true; }
+
+  try {
+    const resp = await apiFetch(`/iot/devices/${encodeURIComponent(deviceId)}`, {
+      method: 'PUT',
+      headers: buildHeaders({ includeJson: true }),
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error(await extractError(resp));
+
+    closeModal('editMachineModal');
+    showMessage(machineMsg, `Machine ${deviceId} updated successfully.`, false);
+
+    await fetchMachines();
+    renderMachines();
+  } catch (error) {
+    console.error('Error updating machine:', error);
+    showMessage(msgEl, `Error updating machine: ${error.message}`);
+  } finally {
+    if (submitBtn) { submitBtn.textContent = originalText || 'Save Changes'; submitBtn.disabled = false; }
+  }
 }

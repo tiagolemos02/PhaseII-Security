@@ -9,11 +9,67 @@ This README contains the **main changes introduced in this version**, including 
 
 **Repository**: `tiagolemos02/PhaseII-Security/DT_V2.3`
 
-**Version**: `1.0.0`
+**Version**: `1.1.0`
 
 **Author**: Tiago Lemos
 
 **Licence**: MIT
+
+---
+
+## New in v1.1.0
+
+### ✅ Machine edit modal
+
+Machines in the **Machine & Services** tab now have an **Edit** button that opens a modal overlay pre-populated with all the machine's current settings.
+
+**What was added:**
+
+* Edit button next to the existing Delete button in the Machines table
+* Full-featured modal with the same fields as the Add Machine form:
+  * Device ID (read-only)
+  * Service group selector
+  * Name, model, description, operational status
+  * Telemetry attributes section with Manual/Automatic toggle
+  * Static attributes section with Manual/Automatic toggle
+* Changes are submitted via `PUT /iot/devices/{deviceId}`
+* On success the table refreshes automatically
+
+**Authorization:**
+
+The IoT Agent's PUT endpoint was not covered by the original XACML policy. A new rule was added to both `keyrock-bootstrap.sh` and `existing-policy-v8.xml` granting the `admin` role PUT access to `/iot/devices/{id}`.
+
+> After updating these files, re-run the bootstrap service to push the new permission into the live Keyrock/AuthzForce instance:
+> ```bash
+> docker compose up keyrock-bootstrap
+> ```
+
+---
+
+### ✅ Attribute details modal
+
+The **Attributes** count shown in the Details column of the Machines table is now accurate and interactive.
+
+**What was fixed:**
+
+* The count previously included system-generated static attributes (e.g. `friendlyName`, `model`, `operationalStatus`, `serviceGroupKey`, etc.), inflating the number. It now shows only user-defined telemetry and custom static attributes.
+
+**What was added:**
+
+* The count is now a clickable link that opens an **Attributes modal** showing:
+
+  * **Left panel — Visual view**: two tables, one for telemetry attributes (Object ID / Name / Type) and one for custom static attributes (Name / Type / Value)
+  * **Right panel — JSON view**: the raw attribute arrays formatted as JSON
+
+* **Color coding** (consistent across both panels):
+
+  | Color | Meaning |
+  |-------|---------|
+  | Indigo | User-defined attributes |
+  | Amber | System-generated static attributes |
+
+* **Eye toggle button** in the Static Attributes header: shows or hides the system-generated entries in both the visual table and the JSON panel simultaneously. Hidden by default to reduce noise.
+* A **legend** below the section header identifies the two colors.
 
 ---
 
