@@ -91,7 +91,8 @@ $secretKeys = @(
     "KEYROCK_DB_PASS",
     "KEYROCK_ADMIN_PASS",
     "KEYROCK_VIEWER_PASS",
-    "BFF_SESSION_SECRET"
+    "BFF_SESSION_SECRET",
+    "MONGO_ROOT_PASSWORD"
 )
 
 foreach ($key in $secretKeys) {
