@@ -107,7 +107,7 @@ The **Attributes** count shown in the Details column of the Machines table is no
 
 ---
 
-## What changed
+## What changed - v1.0
 
  ### ✅ New Backend-for-Frontend (BFF) + Authorization Code flow
 
