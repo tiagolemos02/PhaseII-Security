@@ -9,11 +9,26 @@ This README contains the **main changes introduced in this version**, including 
 
 **Repository**: `tiagolemos02/PhaseII-Security/DT_V2.3`
 
-**Version**: `1.2.0`
+**Version**: `1.2.1`
 
 **Author**: Tiago Lemos
 
 **Licence**: MIT
+
+---
+
+## Fix in v1.2.1
+
+### ✅ IoT Agent MongoDB connection with authentication
+
+After enabling MongoDB authentication in v1.2.0, `fiware-custom-agent` was exiting immediately with a `MongoParseError: credentials must be an object with 'username' and 'password' properties`.
+
+**Root cause:** `iotagent-node-lib` was building the connection URI with credentials embedded (`mongodb://user:pass@host/db`) but simultaneously passing the credentials as a separate `auth: { user, pass }` object to Mongoose. MongoDB driver v4 rejects the old `{ user, pass }` format and requires `{ username, password }`, causing the conflict.
+
+**What changed:**
+
+* Replaced the five individual `IOTA_MONGO_HOST` / `IOTA_MONGO_PORT` / `IOTA_MONGO_DB` / `IOTA_MONGO_USER` / `IOTA_MONGO_PASSWORD` env vars in the `iot-agent` service with a single `IOTA_MONGO_URI`
+* When the library receives a full URI it passes it directly to Mongoose without injecting the broken `auth` options object
 
 ---
 
@@ -107,7 +122,7 @@ The **Attributes** count shown in the Details column of the Machines table is no
 
 ---
 
-## What changed - v1.0
+## What changed
 
  ### ✅ New Backend-for-Frontend (BFF) + Authorization Code flow
 
