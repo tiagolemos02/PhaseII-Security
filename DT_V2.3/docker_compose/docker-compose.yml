@@ -304,7 +304,9 @@ services:
       - IOTA_NORTH_PORT=4041
       - IOTA_CB_NGSI_VERSION=v2
       - IOTA_REGISTRY_TYPE=mongodb
-      - IOTA_MONGO_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo-db:27017/iotagentjson
+      - IOTA_MONGO_HOST=${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo-db
+      - IOTA_MONGO_PORT=27017
+      - IOTA_MONGO_DB=iotagentjson?authSource=admin
       - IOTA_MQTT_HOST=mosquitto
       - IOTA_MQTT_PORT=1883
       - IOTA_DEFAULT_TRANSPORT=MQTT

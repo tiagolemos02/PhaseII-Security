@@ -9,11 +9,28 @@ This README contains the **main changes introduced in this version**, including 
 
 **Repository**: `tiagolemos02/PhaseII-Security/DT_V2.3`
 
-**Version**: `1.2.1`
+**Version**: `1.2.2`
 
 **Author**: Tiago Lemos
 
 **Licence**: MIT
+
+---
+
+## Fix in v1.2.2
+
+### ✅ IoT Agent MongoDB connection — credential embedding and authSource
+
+`IOTA_MONGO_URI` (introduced in v1.2.1) is not recognized by the version of `iotagent-node-lib` bundled in the custom image. When set, the library ignores it and falls back to `localhost:27017`, causing an immediate `ECONNREFUSED`.
+
+**Root cause:** The custom image uses an older version of `iotagent-node-lib` that constructs the MongoDB URI from individual `IOTA_MONGO_HOST` / `IOTA_MONGO_PORT` / `IOTA_MONGO_DB` variables. When `IOTA_MONGO_USER` and `IOTA_MONGO_PASSWORD` are also set, the library additionally injects `auth: { user, pass }` as a separate Mongoose option — a format MongoDB driver v4 rejects (v1.2.0 issue). When they are not set, no auth option is injected and the URI is passed through cleanly.
+
+**What changed:**
+
+* Replaced `IOTA_MONGO_URI` with the three individual vars the old library actually reads
+* Credentials are embedded directly in `IOTA_MONGO_HOST` (as `user:pass@mongo-db`) so no separate `auth` option is injected
+* `?authSource=admin` is appended to `IOTA_MONGO_DB` so the driver authenticates against the `admin` database where the root user lives
+* Final URI the library constructs: `mongodb://user:pass@mongo-db:27017/iotagentjson?authSource=admin`
 
 ---
 
