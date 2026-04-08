@@ -157,3 +157,10 @@ export const staticAttributeAutoList = document.getElementById("staticAttributeA
 export const machineMsg = document.getElementById("machineMsg");
 export const machinesTableBody = document.getElementById("machinesTableBody");
 export const machineCount = document.getElementById("machineCount");
+
+// Device picker elements (Add Machine form)
+export const deviceIdPickerWrapper = document.getElementById("deviceIdPickerWrapper");
+export const deviceIdPickerToggle  = document.getElementById("deviceIdPickerToggle");
+export const deviceIdPickerPanel   = document.getElementById("deviceIdPickerPanel");
+export const deviceIdPickerList    = document.getElementById("deviceIdPickerList");
+export const deviceIdPickerChevron = document.getElementById("deviceIdPickerChevron");

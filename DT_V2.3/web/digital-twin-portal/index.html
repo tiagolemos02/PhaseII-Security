@@ -484,6 +484,23 @@
                     </select>
                   </div>
                 </div>
+                <!-- Device picker: shown when a service group is selected and unregistered
+                     IoT Agent devices are available for it. -->
+                <div id="deviceIdPickerWrapper" class="hidden">
+                  <button
+                    type="button"
+                    id="deviceIdPickerToggle"
+                    class="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 font-medium mt-1 focus:outline-none"
+                    aria-expanded="false"
+                    aria-controls="deviceIdPickerPanel"
+                  >
+                    <i id="deviceIdPickerChevron" class="fas fa-chevron-right text-xs transition-transform duration-200"></i>
+                    Available device IDs from IoT Agent
+                  </button>
+                  <div id="deviceIdPickerPanel" class="hidden mt-2 border border-gray-200 rounded-lg bg-white shadow-sm">
+                    <ul id="deviceIdPickerList" class="py-1 max-h-40 overflow-y-auto divide-y divide-gray-100"></ul>
+                  </div>
+                </div>
                 <div>
                   <label for="machineName" class="block text-sm font-medium text-gray-700 mb-1">Machine name</label>
                   <input

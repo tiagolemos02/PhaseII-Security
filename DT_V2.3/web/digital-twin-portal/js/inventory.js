@@ -38,7 +38,12 @@ import {
   staticAttributeAutoList,
   machineMsg,
   machinesTableBody,
-  machineCount
+  machineCount,
+  deviceIdPickerWrapper,
+  deviceIdPickerToggle,
+  deviceIdPickerPanel,
+  deviceIdPickerList,
+  deviceIdPickerChevron
 } from './dom-elements.js';
 import {
   IOT_AGENT_CBROKER,
@@ -59,6 +64,7 @@ import {
 
 let serviceGroups = [];
 let machines = [];
+let allIotDevices = [];
 let loadingServiceGroups = false;
 let loadingMachines = false;
 const ACTIVITY_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
@@ -72,6 +78,31 @@ let editTelemetryAttributeEntries = [];
 let editStaticAttributeEntries = [];
 let editTelemetryInputMode = 'manual';
 let editStaticInputMode = 'manual';
+
+const LOCAL_REGISTERED_KEY = 'dt_portal_registered_devices';
+
+function getLocalRegisteredIds() {
+  try {
+    const raw = localStorage.getItem(LOCAL_REGISTERED_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addLocalRegisteredId(deviceId) {
+  if (!deviceId) return;
+  const ids = getLocalRegisteredIds();
+  ids.add(deviceId);
+  localStorage.setItem(LOCAL_REGISTERED_KEY, JSON.stringify([...ids]));
+}
+
+function removeLocalRegisteredId(deviceId) {
+  if (!deviceId) return;
+  const ids = getLocalRegisteredIds();
+  ids.delete(deviceId);
+  localStorage.setItem(LOCAL_REGISTERED_KEY, JSON.stringify([...ids]));
+}
 
 const SYSTEM_STATIC_ATTR_NAMES = new Set([
   'friendlyName', 'model', 'notes', 'operationalStatus',
@@ -149,6 +180,18 @@ export function initInventory() {
   attributeAutoList?.addEventListener('click', handleTelemetryAttributeListClick);
   staticAttributeAutoList?.addEventListener('click', handleStaticAttributeListClick);
 
+  machineServiceGroup?.addEventListener('change', handleServiceGroupPickerChange);
+  deviceIdPickerToggle?.addEventListener('click', () => {
+    const open = deviceIdPickerToggle.getAttribute('aria-expanded') === 'true';
+    deviceIdPickerToggle.setAttribute('aria-expanded', String(!open));
+    deviceIdPickerPanel?.classList.toggle('hidden', open);
+    deviceIdPickerChevron?.classList.toggle('rotate-90', !open);
+  });
+  deviceIdPickerList?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-action="pick-device-id"]');
+    if (btn && machineDeviceId) machineDeviceId.value = btn.getAttribute('data-device-id') || '';
+  });
+
   applyServiceDefaults();
   initializeAttributeInputs();
   startMachineStatusTicker();
@@ -178,6 +221,8 @@ async function loadInventory() {
 
   await fetchMachines();
   renderMachines();
+  // Refresh picker in case a service group was already selected when machines loaded.
+  handleServiceGroupPickerChange();
 }
 
 function startMachineStatusTicker() {
@@ -620,7 +665,19 @@ async function fetchMachines() {
     const payload = await resp.json().catch(() => ({}));
     const entries = Array.isArray(payload.devices) ? payload.devices : [];
     const normalizedDevices = entries.map(normalizeDevice);
-    machines = mergeDuplicateDevices(normalizedDevices);
+    allIotDevices = mergeDuplicateDevices(normalizedDevices);
+    const registeredIds = getLocalRegisteredIds();
+    // Deduplicate by deviceId — the IoT Agent can hold two records for the same device
+    // (auto-provisioned + portal PUT), producing duplicate rows. Keep only the preferred entry.
+    const machineMap = new Map();
+    for (const d of allIotDevices) {
+      if (!registeredIds.has(d.deviceId)) continue;
+      const existing = machineMap.get(d.deviceId);
+      if (!existing || isPreferredMachineEntry(d, existing)) {
+        machineMap.set(d.deviceId, d);
+      }
+    }
+    machines = Array.from(machineMap.values());
     await syncMachineActivityData();
     updateMachineStatusesFromStore();
     hideMessage(machineMsg);
@@ -734,9 +791,6 @@ async function handleServiceGroupSubmit(event) {
     await fetchServiceGroups();
     renderServiceGroups();
     refreshServiceGroupOptions(serviceKey);
-    // Refresh machines list to surface any existing devices that belong to the new service group.
-    await fetchMachines();
-    renderMachines();
   } catch (error) {
     console.error('Error creating service group:', error);
     showMessage(serviceGroupMsg, `Error creating service group: ${error.message}`);
@@ -884,6 +938,7 @@ async function handleDeleteMachine(button, machine) {
       throw new Error(await extractError(resp));
     }
 
+    removeLocalRegisteredId(machine.deviceId);
     showMessage(machineMsg, `Machine ${machine.deviceId} deleted successfully.`, false);
 
     await fetchMachines();
@@ -925,6 +980,12 @@ async function handleMachineSubmit(event) {
 
   if (!deviceId) {
     showMessage(machineMsg, 'Device ID is required.');
+    return;
+  }
+
+  // Pre-flight: block if already portal-registered.
+  if (getLocalRegisteredIds().has(deviceId)) {
+    showMessage(machineMsg, 'This device is already registered — it appears in Machines in Use.');
     return;
   }
 
@@ -991,16 +1052,38 @@ async function handleMachineSubmit(event) {
   }
 
   try {
-    const resp = await apiFetch('/iot/devices', {
-      method: 'POST',
-      headers: buildHeaders({ includeJson: true }),
-      body: JSON.stringify(payload)
-    });
+    const existsInAgent = allIotDevices.some((d) => d.deviceId === deviceId);
+    let resp;
+    if (existsInAgent) {
+      // Device already provisioned in IoT Agent (e.g. auto-provisioned via MQTT).
+      // Use PUT to attach portal metadata without re-creating it.
+      const putPayload = {
+        entity_name: buildEntityName(deviceId, entityType),
+        entity_type: entityType,
+        transport: IOT_AGENT_TRANSPORT,
+        protocol: IOT_AGENT_PROTOCOL,
+        attributes,
+        commands: [],
+        static_attributes: staticAttributes
+      };
+      resp = await apiFetch(`/iot/devices/${encodeURIComponent(deviceId)}`, {
+        method: 'PUT',
+        headers: buildHeaders({ includeJson: true }),
+        body: JSON.stringify(putPayload)
+      });
+    } else {
+      resp = await apiFetch('/iot/devices', {
+        method: 'POST',
+        headers: buildHeaders({ includeJson: true }),
+        body: JSON.stringify(payload)
+      });
+    }
 
     if (!resp.ok) {
       throw new Error(await extractError(resp));
     }
 
+    addLocalRegisteredId(deviceId);
     const lastSelection = machineServiceGroup?.value;
     machineForm?.reset();
     if (machineServiceGroup && lastSelection) {
@@ -1014,6 +1097,7 @@ async function handleMachineSubmit(event) {
 
     await fetchMachines();
     renderMachines();
+    handleServiceGroupPickerChange(); // refresh picker to remove the just-registered device
   } catch (error) {
     console.error('Error creating machine:', error);
     showMessage(machineMsg, `Error creating machine: ${error.message}`);
@@ -1258,6 +1342,114 @@ function renderMachines() {
 }
 
 /**
+ * Return a Set of entity names for all portal-registered machines.
+ * Used by orion-logs.js to filter Orion entities.
+ */
+export function getRegisteredMachineEntityIds() {
+  return new Set(machines.map((m) => m.entityName).filter(Boolean));
+}
+
+/**
+ * Return a Set of Orion attribute names allowed for this entity.
+ * Includes registered telemetry attr names + object_id last segments + user-defined static attr names.
+ * Returns null if the entity is not in the registered machines list.
+ */
+export function getRegisteredMachineAttributeNames(entityId) {
+  const machine = machines.find((m) => m.entityName === entityId);
+  if (!machine) return null;
+  const allowed = new Set();
+  for (const attr of (machine.attributes || [])) {
+    if (attr.name) allowed.add(attr.name);
+    if (attr.object_id) {
+      const last = attr.object_id.split('/').pop();
+      if (last) allowed.add(last);
+    }
+  }
+  for (const attr of (machine.staticAttributes || [])) {
+    if (attr.name && !SYSTEM_STATIC_ATTR_NAMES.has(attr.name)) allowed.add(attr.name);
+  }
+  return allowed;
+}
+
+/**
+ * Return a display label for an Orion entity: "Friendly Name (deviceId)" or just "deviceId".
+ */
+export function getMachineLabel(entityId) {
+  const machine = machines.find((m) => m.entityName === entityId);
+  if (!machine) return entityId;
+  const name = machine.friendlyName || '';
+  const deviceId = machine.deviceId || '';
+  if (name && deviceId) return `${name} (${deviceId})`;
+  return name || deviceId || entityId;
+}
+
+/**
+ * When the service group select changes, populate the collapsible device
+ * picker with ALL IoT Agent devices that belong to that group.
+ * Already-registered devices are shown with a badge and cannot be selected.
+ * Unregistered devices can be clicked to fill the Device ID field.
+ */
+function handleServiceGroupPickerChange() {
+  if (!deviceIdPickerWrapper || !deviceIdPickerList) return;
+
+  const selectedKey = machineServiceGroup?.value || '';
+  if (!selectedKey) {
+    deviceIdPickerWrapper.classList.add('hidden');
+    return;
+  }
+
+  const targetGroup = serviceGroups.find((g) => g.key === selectedKey);
+  if (!targetGroup) {
+    deviceIdPickerWrapper.classList.add('hidden');
+    return;
+  }
+
+  // Include IoT Agent devices whose apikey+resource match this group.
+  // If a device's resource is unknown (empty), include it anyway — it may
+  // belong to this group but the IoT Agent didn't return enough info to confirm.
+  const candidates = allIotDevices.filter((d) => {
+    if (targetGroup.apikey && d.apikey && d.apikey !== targetGroup.apikey) return false;
+    if (d.resource) {
+      const resourceMatch =
+        normalizeResourcePath(d.resource) === normalizeResourcePath(targetGroup.resource);
+      if (!resourceMatch) return false;
+    }
+    return true;
+  });
+
+  if (!candidates.length) {
+    deviceIdPickerWrapper.classList.add('hidden');
+    return;
+  }
+
+  const localRegisteredIds = getLocalRegisteredIds();
+  deviceIdPickerList.innerHTML = candidates
+    .map((d) => {
+      if (localRegisteredIds.has(d.deviceId)) {
+        return `
+      <li>
+        <span class="flex items-center justify-between px-3 py-1.5 text-sm text-gray-400">
+          ${escapeHtml(d.deviceId)}
+          <span class="ml-2 text-xs font-semibold text-green-600 bg-green-50 rounded px-1.5 py-0.5">Registered</span>
+        </span>
+      </li>`;
+      }
+      return `
+      <li>
+        <button
+          type="button"
+          class="w-full text-left px-3 py-1.5 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded"
+          data-action="pick-device-id"
+          data-device-id="${escapeHtml(d.deviceId)}"
+        >${escapeHtml(d.deviceId)}</button>
+      </li>`;
+    })
+    .join('');
+
+  deviceIdPickerWrapper.classList.remove('hidden');
+}
+
+/**
  * Populate machine service group select options.
  */
 function refreshServiceGroupOptions(selectedKey = '') {
@@ -1463,8 +1655,12 @@ function firstNonEmpty(...values) {
 }
 
 function normalizeDevice(entry = {}) {
-  const staticMap = toAttributeMap(entry.static_attributes);
-  const serviceInfo = entry.service || {};
+  // The custom IoT Agent may return staticAttributes (camelCase) instead of
+  // static_attributes (snake_case). Support both.
+  const staticMap = toAttributeMap(entry.static_attributes || entry.staticAttributes);
+  // entry.service may be a plain string (fiwareService) rather than an object;
+  // only treat it as an object when it actually is one.
+  const serviceInfo = (entry.service && typeof entry.service === 'object') ? entry.service : {};
   const storedServiceKey = asNonEmptyString(staticMap.get('serviceGroupKey'));
   const storedResource = asNonEmptyString(staticMap.get('serviceGroupResource'));
   const storedApikey = asNonEmptyString(staticMap.get('serviceGroupApikey'));
@@ -1530,20 +1726,27 @@ function normalizeDevice(entry = {}) {
     entityType
   });
   const resolvedServiceKey = storedServiceKey || computedServiceKey;
+  // Resolve the raw static attributes list handling both naming conventions.
+  const rawStaticAttrs = Array.isArray(entry.static_attributes)
+    ? entry.static_attributes
+    : Array.isArray(entry.staticAttributes)
+      ? entry.staticAttributes
+      : [];
   return {
-    deviceId: entry.device_id || '',
-    entityName: entry.entity_name || '',
+    deviceId: entry.device_id || entry.id || '',
+    entityName: entry.entity_name || entry.name || '',
     entityType,
     transport: entry.transport || '',
     protocol: entry.protocol || '',
-    attributes: Array.isArray(entry.attributes) ? entry.attributes : [],
-    staticAttributes: Array.isArray(entry.static_attributes) ? entry.static_attributes : [],
+    attributes: Array.isArray(entry.attributes) ? entry.attributes : (Array.isArray(entry.active) ? entry.active : []),
+    staticAttributes: rawStaticAttrs,
     apikey,
     resource,
     cbroker,
     fiwareService,
     subservice,
     serviceKey: resolvedServiceKey,
+    isPortalRegistered: !!storedServiceKey,
     friendlyName: staticMap.get('friendlyName') || '',
     model: staticMap.get('model') || '',
     assetId,
@@ -1551,6 +1754,18 @@ function normalizeDevice(entry = {}) {
     status: staticMap.get('operationalStatus') || '',
     raw: entry
   };
+}
+
+/**
+ * When the IoT Agent holds two records for the same deviceId (auto-provisioned + portal PUT),
+ * prefer the portal PUT entry: it has a urn:ngsi-ld: entityName and more static attributes.
+ */
+function isPreferredMachineEntry(candidate, current) {
+  const candidateUrn = candidate.entityName?.startsWith('urn:ngsi-ld:') ?? false;
+  const currentUrn   = current.entityName?.startsWith('urn:ngsi-ld:')  ?? false;
+  if (candidateUrn && !currentUrn) return true;
+  if (!candidateUrn && currentUrn) return false;
+  return (candidate.staticAttributes?.length ?? 0) > (current.staticAttributes?.length ?? 0);
 }
 
 function mergeDuplicateDevices(devices = []) {
@@ -2200,6 +2415,24 @@ function openMachineAttributesModal(machine) {
     const hasSystemAttrs = systemStaticAttrs.length > 0;
 
     visual.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-5 text-xs text-gray-500">
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0"></span>User-defined
+          </span>
+          ${hasSystemAttrs ? `
+          <span class="flex items-center gap-1.5">
+            <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>System-generated
+          </span>` : ''}
+        </div>
+        ${hasSystemAttrs ? `
+        <button type="button" id="toggleSystemAttrsBtn"
+          class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 focus:outline-none"
+          title="Show/hide system-generated attributes">
+          <i class="fas fa-eye-slash text-sm"></i>
+          <span>Show system</span>
+        </button>` : ''}
+      </div>
       <h3 class="text-sm font-semibold text-gray-700 mb-2">Telemetry Attributes</h3>
       <table class="w-full mb-6 text-left">
         <thead>
@@ -2211,25 +2444,7 @@ function openMachineAttributesModal(machine) {
         </thead>
         <tbody>${telemetryRows}</tbody>
       </table>
-      <div class="flex items-center justify-between mb-1">
-        <h3 class="text-sm font-semibold text-gray-700">Static Attributes</h3>
-        ${hasSystemAttrs ? `
-        <button type="button" id="toggleSystemAttrsBtn"
-          class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 focus:outline-none"
-          title="Show/hide system-generated attributes">
-          <i class="fas fa-eye-slash text-sm"></i>
-          <span>Show system</span>
-        </button>` : ''}
-      </div>
-      <div class="flex items-center gap-5 mb-3 text-xs text-gray-500">
-        <span class="flex items-center gap-1.5">
-          <span class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0"></span>User-defined
-        </span>
-        ${hasSystemAttrs ? `
-        <span class="flex items-center gap-1.5">
-          <span class="inline-block w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>System-generated
-        </span>` : ''}
-      </div>
+      <h3 class="text-sm font-semibold text-gray-700 mb-2">Static Attributes</h3>
       <table class="w-full text-left">
         <thead>
           <tr class="text-xs text-gray-500 border-b border-gray-200">

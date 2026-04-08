@@ -9,11 +9,139 @@ This README contains the **main changes introduced in this version**, including 
 
 **Repository**: `tiagolemos02/PhaseII-Security/DT_V2.3`
 
-**Version**: `1.2.2`
+**Version**: `1.3.0`
 
 **Author**: Tiago Lemos
 
 **Licence**: MIT
+
+---
+
+## New in v1.3.0
+
+### ✅ Machine registration control — portal-only "Machines in Use"
+
+Previously, any device that the IoT Agent had ever auto-provisioned (e.g. via the MQTT broker) would appear in **Machines in Use** as soon as the page loaded or a service group was created, even if it was never explicitly registered through the portal form.
+
+**What changed:**
+
+* A `localStorage` registry (`dt_portal_registered_devices`) now tracks which device IDs have been explicitly registered through the portal
+* `fetchMachines()` filters the IoT Agent device list against this registry instead of relying on `static_attributes` (which the custom IoT Agent build does not return in GET responses)
+* Creating a service group no longer triggers an automatic machine fetch that surfaced unrelated devices
+* Registering a machine writes its `deviceId` to the registry; deleting it removes the entry
+
+---
+
+### ✅ Device picker in "Add Machine" form
+
+When the user selects a service group in the **Add Machine** form, a collapsible **"Available device IDs from IoT Agent"** section now appears beneath the Device ID field.
+
+**What was added:**
+
+* Devices already present in the IoT Agent for that service group are listed as clickable buttons — clicking one fills the Device ID field automatically
+* Devices already registered through the portal show a **Registered** badge and are not clickable (they cannot be registered twice)
+* The picker refreshes after every successful registration
+* New HTML element `#deviceIdPickerWrapper` added to `index.html`; five new exports added to `dom-elements.js`
+
+---
+
+### ✅ Auto-provisioned device registration (PUT instead of POST)
+
+When a device is already present in the IoT Agent (auto-provisioned by the MQTT broker before any portal interaction), attempting to register it via `POST /iot/devices` would fail with a duplicate-device error.
+
+**What changed:**
+
+* `handleMachineSubmit()` now checks `allIotDevices` before submitting
+* If the device already exists in the IoT Agent: sends `PUT /iot/devices/{id}` to attach portal metadata (friendly name, static attributes, entity name)
+* If the device does not exist: sends `POST /iot/devices` as before
+* The localStorage registry is updated on success regardless of which method was used
+
+---
+
+### ✅ Duplicate machine row fix
+
+When registering an auto-provisioned device via PUT, the IoT Agent ends up holding two records with the same `deviceId` but different `entityName` values.
+
+Example:
+
+* Auto-provisioned record: `Machine:00:00:1B:C4:58:GB` (format used by the MQTT binding)
+* Portal PUT record: `urn:ngsi-ld:Machine:00-00-1B-C4-58-GB` (format used by `buildEntityName`)
+
+Because `mergeDuplicateDevices` keys on `[deviceId, entityName, serviceKey]`, both records survived deduplication and both passed the localStorage filter, causing two rows to appear for the same physical machine — and deleting the ghost row also deleted the real registration.
+
+**What changed:**
+
+* `fetchMachines()` now deduplicates the filtered machine list by `deviceId`, keeping only the preferred entry
+* Preference: `urn:ngsi-ld:` entity name wins over the auto-provisioned format; more static attributes breaks ties
+* A new private helper `isPreferredMachineEntry()` encapsulates the preference logic
+* `mergeDuplicateDevices` itself is unchanged (its composite key is intentional for other scenarios)
+
+---
+
+### ✅ Orion Logs — registered machines and attributes only
+
+The Orion Logs tab previously showed every Orion entity of type `Machine`, and for each entity it displayed every attribute the MQTT broker had ever published — including sensor readings not registered through the portal and all system-generated static attributes.
+
+**What changed:**
+
+* **Entity filter**: only entities whose `id` appears in the portal's registered machine set are shown. Before any machine is registered, an instructional placeholder is displayed.
+* **Attribute filter**: for each entity, only attributes matching the registered telemetry attribute names (both the camelCase `name` and the snake_case last segment of `object_id`) and user-defined static attribute names are shown. Attributes sent by the broker but not registered through the portal are hidden.
+* System-generated static attributes (`serviceGroupKey`, `friendlyName`, `operationalStatus`, `serviceGroupResource`, `serviceGroupFiware`, `serviceGroupSubservice`) are excluded from the log rows.
+
+---
+
+### ✅ Datetime hex value decoding in Orion Logs
+
+The MQTT simulator encodes `datetime`-type attribute values as ASCII-hex strings (e.g. `323032362d30342d30312031303a31343a3332` represents `2026-04-01 10:14:32`). These were previously displayed as-is, showing unreadable garbage.
+
+**What changed:**
+
+* A `tryDecodeHexValue()` helper detects strings of even-length hex characters, decodes them to ASCII, and validates the result as a parseable date
+* If decoding succeeds, the readable date string is shown instead of the raw hex
+
+---
+
+### ✅ Orion Logs — machine label instead of raw entity URI
+
+Device header rows in the Orion Logs table previously showed the full Orion entity URI (e.g. `urn:ngsi-ld:Machine:5C-8D-E5-09-5E-D1`).
+
+**What changed:**
+
+* Header rows now show `"Friendly Name (DeviceID)"` when a friendly name exists, or just `"DeviceID"` when it does not
+* A new exported helper `getMachineLabel(entityId)` in `inventory.js` provides this lookup
+
+---
+
+### ✅ Attributes modal — legend and controls repositioned
+
+The color legend (indigo = user-defined, amber = system-generated) and the **Show/Hide system** toggle button were previously rendered inside the **Static Attributes** section, making them invisible when viewing the Telemetry section alone.
+
+**What changed:**
+
+* The legend row and the Show/Hide button are now rendered at the **top of the visual panel**, above the Telemetry Attributes table, so they are always visible regardless of scroll position
+* The Static Attributes heading is now a plain heading with no controls attached
+
+---
+
+### ✅ New exported helpers in `inventory.js`
+
+Two new module exports were added alongside the existing `getRegisteredMachineEntityIds()`:
+
+| Function | Purpose |
+|----------|---------|
+| `getRegisteredMachineAttributeNames(entityId)` | Returns a `Set` of allowed Orion attribute names for a given entity (telemetry names + `object_id` last segments + user-defined static names) |
+| `getMachineLabel(entityId)` | Returns a human-readable label: `"Friendly Name (DeviceID)"` or `"DeviceID"` |
+
+---
+
+### Technical summary — files changed in v1.3.0
+
+| File | Changes |
+|------|---------|
+| `web/digital-twin-portal/js/inventory.js` | localStorage helpers; `fetchMachines()` dedup; PUT-for-existing in `handleMachineSubmit()`; `handleDeleteMachine()` cleanup; picker event listeners and `handleServiceGroupPickerChange()`; `isPreferredMachineEntry()`; two new exports; attributes modal legend repositioned |
+| `web/digital-twin-portal/js/orion-logs.js` | Import updated; `escapeHtml` local helper; `tryDecodeHexValue()`; attribute filter in `processDeviceData()`; `getMachineLabel()` in `createDeviceRow()` |
+| `web/digital-twin-portal/index.html` | Device picker HTML block added to Add Machine form |
+| `web/digital-twin-portal/js/dom-elements.js` | Five new picker element exports |
 
 ---
 

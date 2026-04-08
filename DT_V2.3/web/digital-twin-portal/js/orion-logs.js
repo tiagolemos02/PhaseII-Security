@@ -10,9 +10,29 @@ import {
     logsTableBody, logsMessage, deviceFilter, attributeFilter
 } from './dom-elements.js';
 import { updateActivityFromDevices, getDeviceActivity } from './device-activity.js';
+import { getRegisteredMachineEntityIds, getRegisteredMachineAttributeNames, getMachineLabel } from './inventory.js';
 
 // In-memory storage for logs filtering
 let logsGrouped = [];
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/**
+ * Attempt to decode an ASCII-hex encoded value to a readable string.
+ * The MQTT simulator encodes datetime values as hex (e.g. "323032362d30342d3031" → "2026-04-01").
+ * Returns the decoded string if it parses as a valid date, otherwise null.
+ */
+function tryDecodeHexValue(val) {
+  if (typeof val !== 'string' || val.length < 4 || val.length % 2 !== 0) return null;
+  if (!/^[0-9a-fA-F]+$/.test(val)) return null;
+  try {
+    const decoded = val.match(/.{2}/g).map(h => String.fromCharCode(parseInt(h, 16))).join('');
+    if (!isNaN(Date.parse(decoded))) return decoded;
+  } catch { /* ignore */ }
+  return null;
+}
 const expandedDeviceIds = new Set(); // track by device.id
 let firstLoad = true;
 
@@ -64,11 +84,25 @@ export async function listLogs() {
             return;
         }
 
-        const devices = await resp.json();
+        const rawDevices = await resp.json();
 
-        if (!Array.isArray(devices) || !devices.length) {
+        // Only show entities that were explicitly registered via the portal.
+        const registeredIds = getRegisteredMachineEntityIds();
+
+        if (!registeredIds.size) {
             logsTableBody.innerHTML =
-                "<tr><td colspan='5' class='px-6 py-4 text-center text-sm text-gray-500'>No devices found</td></tr>";
+                "<tr><td colspan='5' class='px-6 py-4 text-center text-sm text-gray-500'>No registered machines. Add machines via the Inventory tab to see data here.</td></tr>";
+            firstLoad = true;
+            return;
+        }
+
+        const devices = Array.isArray(rawDevices)
+            ? rawDevices.filter((d) => registeredIds.has(d.id))
+            : [];
+
+        if (!devices.length) {
+            logsTableBody.innerHTML =
+                "<tr><td colspan='5' class='px-6 py-4 text-center text-sm text-gray-500'>No Orion data found for registered machines.</td></tr>";
             return;
         }
 
@@ -115,25 +149,31 @@ export async function listLogs() {
 
      devices.forEach((dev) => {
          const deviceEntry = { id: dev.id, attributes: [] };
+         const allowedNames = getRegisteredMachineAttributeNames(dev.id);
 
          Object.entries(dev).forEach(([attr, val]) => {
              // Skip metadata fields
              if (["id", "type"].includes(attr)) return;
              if (attr.toLowerCase() === "timeinstant") return;
 
+             // Only show attributes that were registered via the portal
+             if (allowedNames && !allowedNames.has(attr)) return;
+
             // Extract timestamp information
-            const attrTime = dev.TimeInstant ?? 
+            const attrTime = dev.TimeInstant ??
                 (val.metadata && val.metadata.timestamp ? val.metadata.timestamp.value : null);
 
             const tsIso = attrTime ? new Date(attrTime).toISOString() : "-";
             const latency = attrTime ? Math.round(now - Date.parse(attrTime)) : "-";
-            const value = val.value !== undefined ? val.value : val;
+            const rawValue = val.value !== undefined ? val.value : val;
+            const decoded = tryDecodeHexValue(String(rawValue));
+            const value = decoded !== null ? decoded : rawValue;
 
-            deviceEntry.attributes.push({ 
-                name: attr, 
-                value, 
-                time: tsIso, 
-                latency 
+            deviceEntry.attributes.push({
+                name: attr,
+                value,
+                time: tsIso,
+                latency
              });
          });
 
@@ -234,7 +274,7 @@ function createDeviceRow(device) {
     const statusBadge = renderDeviceStatusBadge(device.status);
     devRow.innerHTML = `
         <td colspan="5" class="px-6 py-4 font-medium text-sm">
-            <i id="arrow-${safeId(device.id)}" class="fas fa-chevron-right arrow-icon mr-2"></i>${statusBadge}<span>${device.id}</span>
+            <i id="arrow-${safeId(device.id)}" class="fas fa-chevron-right arrow-icon mr-2"></i>${statusBadge}<span>${escapeHtml(getMachineLabel(device.id))}</span>
         </td>`;
 
     // Add click handler for expand/collapse
